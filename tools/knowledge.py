@@ -1,3 +1,4 @@
+import os
 import uuid
 from datetime import datetime
 from typing import Optional
@@ -411,12 +412,60 @@ def write_audit_trail(
     documents_used: list[str],
     soul_deviations: list[str] = None,
 ) -> ToolResult:
-    audit_id = f"audit_{uuid.uuid4().hex[:8]}"
+    from core.schemas import AuditTrail
+
+    score = retriever.get_trade_score(trade_score_id)
+    if not score:
+        return ToolResult.error(
+            f"TradeScore {trade_score_id} not found",
+            hint="Call compute_trade_score first",
+        )
+
+    hyp = retriever.get_hypothesis(score.hypothesis_id)
+    if not hyp:
+        return ToolResult.error(f"Hypothesis {score.hypothesis_id} not found")
+
+    valuation = retriever.get_valuation(score.valuation_id) if score.valuation_id else None
+
+    supporting = [
+        e.reasoning for e in hyp.evidence_log if e.direction == "supports"
+    ]
+    refuting = [
+        e.reasoning for e in hyp.evidence_log if e.direction == "refutes"
+    ]
+    belief_trajectory = [
+        {"evidence_id": e.id, "direction": e.direction, "driver": e.driver_link}
+        for e in hyp.evidence_log
+    ]
+
+    audit = AuditTrail(
+        id=f"audit_{uuid.uuid4().hex[:8]}",
+        company=hyp.company,
+        documents_used=documents_used,
+        observations_extracted=len(hyp.evidence_log),
+        evidence_supporting=supporting,
+        evidence_refuting=refuting,
+        belief_trajectory=belief_trajectory,
+        valuation_method=valuation.methodology if valuation else "none",
+        key_assumptions=[a.name for a in valuation.key_assumptions] if valuation else [],
+        raw_trade_score=score.raw_score,
+        constrained_trade_score=score.constrained_score,
+        constraint_reasons=score.constraint_reasons,
+        final_recommendation=score.recommendation,
+        soul_deviations=soul_deviations or [],
+        model_used=os.getenv("OPENAI_MODEL", "gpt-4o"),
+        timestamp=datetime.now(),
+        total_llm_calls=0,
+    )
+    retriever.save_audit_trail(audit)
+
     return ToolResult.ok({
-        "audit_id": audit_id,
-        "message": "Audit trail recorded",
-        "trade_score_id": trade_score_id,
-        "documents_used_count": len(documents_used),
+        "audit_id": audit.id,
+        "company": audit.company,
+        "final_recommendation": audit.final_recommendation,
+        "constrained_score": audit.constrained_trade_score,
+        "evidence_count": len(hyp.evidence_log),
+        "documents_used": len(documents_used),
     })
 
 

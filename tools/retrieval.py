@@ -39,6 +39,9 @@ class EvidenceRetriever(ABC):
     def save_trade_score(self, score: TradeScore) -> None: ...
 
     @abstractmethod
+    def get_trade_score(self, trade_score_id: str) -> Optional[TradeScore]: ...
+
+    @abstractmethod
     def save_audit_trail(self, audit: AuditTrail) -> None: ...
 
     @abstractmethod
@@ -149,6 +152,13 @@ class SQLiteRetriever(EvidenceRetriever):
                 "INSERT OR REPLACE INTO trade_scores (id, hypothesis_id, data) VALUES (?, ?, ?)",
                 (score.id, score.hypothesis_id, score.model_dump_json()),
             )
+
+    def get_trade_score(self, trade_score_id: str) -> Optional[TradeScore]:
+        with self._conn() as conn:
+            row = conn.execute(
+                "SELECT data FROM trade_scores WHERE id = ?", (trade_score_id,)
+            ).fetchone()
+        return TradeScore.model_validate_json(row[0]) if row else None
 
     def save_audit_trail(self, audit: AuditTrail) -> None:
         with self._conn() as conn:
