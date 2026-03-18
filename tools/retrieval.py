@@ -1,9 +1,19 @@
 import json
+import math
 import sqlite3
 from abc import ABC, abstractmethod
 from typing import Optional
 
 from core.schemas import Observation, Hypothesis, EvidenceCard, ValuationOutput, TradeScore, AuditTrail
+
+
+def cosine_similarity(a: list[float], b: list[float]) -> float:
+    dot = sum(x * y for x, y in zip(a, b))
+    norm_a = math.sqrt(sum(x * x for x in a))
+    norm_b = math.sqrt(sum(x * x for x in b))
+    if norm_a == 0 or norm_b == 0:
+        return 0.0
+    return dot / (norm_a * norm_b)
 
 
 class EvidenceRetriever(ABC):
@@ -83,6 +93,13 @@ class SQLiteRetriever(EvidenceRetriever):
                     company TEXT NOT NULL,
                     data TEXT NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS embeddings (
+                    id TEXT PRIMARY KEY,
+                    content TEXT NOT NULL,
+                    embedding TEXT NOT NULL,
+                    source_type TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                );
             """)
 
     def save_observation(self, obs: Observation) -> None:
@@ -91,6 +108,7 @@ class SQLiteRetriever(EvidenceRetriever):
                 "INSERT OR REPLACE INTO observations (id, subject, data) VALUES (?, ?, ?)",
                 (obs.id, obs.subject, obs.model_dump_json()),
             )
+        self.save_embedding(obs.id, f"{obs.subject}: {obs.claim}", "observation")
 
     def query_observations(
         self,
@@ -114,6 +132,7 @@ class SQLiteRetriever(EvidenceRetriever):
                 "INSERT OR REPLACE INTO hypotheses (id, company, data) VALUES (?, ?, ?)",
                 (hyp.id, hyp.company, hyp.model_dump_json()),
             )
+        self.save_embedding(hyp.id, f"{hyp.company}: {hyp.thesis}", "hypothesis")
 
     def get_hypothesis(self, hypothesis_id: str) -> Optional[Hypothesis]:
         with self._conn() as conn:
@@ -174,3 +193,67 @@ class SQLiteRetriever(EvidenceRetriever):
                 (company,)
             ).fetchone()
         return AuditTrail.model_validate_json(row[0]) if row else None
+
+    # ---- vector search methods ----
+
+    def _embed(self, texts: list[str]) -> list[list[float]]:
+        """Call OpenAI embeddings API. Returns one embedding vector per input text."""
+        import os
+        import openai
+        client = openai.OpenAI(
+            api_key=os.getenv("OPENAI_API_KEY"),
+            base_url=os.getenv("OPENAI_BASE_URL"),
+        )
+        response = client.embeddings.create(
+            model=os.getenv("EMBEDDING_MODEL", "text-embedding-3-small"),
+            input=texts,
+        )
+        return [item.embedding for item in response.data]
+
+    def save_embedding(self, id: str, content: str, source_type: str) -> None:
+        """Embed content and store in embeddings table. Best-effort: catches exceptions."""
+        try:
+            from datetime import datetime, timezone
+            vectors = self._embed([content])
+            embedding_json = json.dumps(vectors[0])
+            with self._conn() as conn:
+                conn.execute(
+                    "INSERT OR REPLACE INTO embeddings (id, content, embedding, source_type, created_at) "
+                    "VALUES (?, ?, ?, ?, ?)",
+                    (id, content, embedding_json, source_type, datetime.now(timezone.utc).isoformat()),
+                )
+        except Exception:
+            pass  # best-effort
+
+    def semantic_search(
+        self, query: str, top_k: int = 5, source_type: str = None
+    ) -> list[dict]:
+        """Embed query, load all embeddings, rank by cosine similarity. Returns list of dicts."""
+        try:
+            query_vec = self._embed([query])[0]
+            with self._conn() as conn:
+                if source_type:
+                    rows = conn.execute(
+                        "SELECT id, content, embedding, source_type FROM embeddings WHERE source_type = ?",
+                        (source_type,),
+                    ).fetchall()
+                else:
+                    rows = conn.execute(
+                        "SELECT id, content, embedding, source_type FROM embeddings"
+                    ).fetchall()
+            if not rows:
+                return []
+            scored = []
+            for row in rows:
+                emb = json.loads(row[2])
+                score = cosine_similarity(query_vec, emb)
+                scored.append({
+                    "id": row[0],
+                    "content": row[1],
+                    "source_type": row[3],
+                    "score": score,
+                })
+            scored.sort(key=lambda x: x["score"], reverse=True)
+            return scored[:top_k]
+        except Exception:
+            return []
