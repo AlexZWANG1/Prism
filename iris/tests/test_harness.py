@@ -403,7 +403,7 @@ def test_llm_compaction_calls_summarizer():
 
 def test_cross_session_context_loading():
     from tools.retrieval import SQLiteRetriever
-    from tools.knowledge import extract_observation, create_hypothesis
+    from skills.hypothesis.tools import extract_observation, create_hypothesis
     import tempfile, os
 
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:

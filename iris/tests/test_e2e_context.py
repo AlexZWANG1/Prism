@@ -12,18 +12,15 @@ from llm.base import LLMResponse, ToolCall, LLMClient
 from core.harness import Harness, HarnessConfig, EventType
 from tools.base import Tool, ToolResult
 from tools.retrieval import SQLiteRetriever
-from tools.knowledge import (
+from skills.hypothesis.tools import (
     extract_observation,
     create_hypothesis,
     add_evidence_card,
-    compute_trade_score,
-    memory_search,
     EXTRACT_OBSERVATION_SCHEMA,
     CREATE_HYPOTHESIS_SCHEMA,
     ADD_EVIDENCE_CARD_SCHEMA,
-    COMPUTE_TRADE_SCORE_SCHEMA,
-    MEMORY_SEARCH_SCHEMA,
 )
+from tools.semantic_search import memory_search, MEMORY_SEARCH_SCHEMA
 
 
 # ---------------------------------------------------------------------------
@@ -45,7 +42,6 @@ def _make_knowledge_tools(retriever):
         Tool(extract_observation, EXTRACT_OBSERVATION_SCHEMA, retriever=retriever),
         Tool(create_hypothesis, CREATE_HYPOTHESIS_SCHEMA, retriever=retriever),
         Tool(add_evidence_card, ADD_EVIDENCE_CARD_SCHEMA, retriever=retriever),
-        Tool(compute_trade_score, COMPUTE_TRADE_SCORE_SCHEMA, retriever=retriever),
         Tool(memory_search, MEMORY_SEARCH_SCHEMA, retriever=retriever),
     ]
 
@@ -151,23 +147,10 @@ class TestFullAnalysisCycleWithPersistence:
                     "reasoning": "Direct revenue evidence supports thesis",
                 },
             )
-            tc_score = ToolCall(
-                id="tc_score",
-                name="compute_trade_score",
-                arguments={
-                    "hypothesis_id": hyp_id,
-                    "fundamental_quality": 0.8,
-                    "catalyst_timing": 0.6,
-                    "risk_penalty": 0.3,
-                    "reasoning": "Good fundamentals, catalysts moderate",
-                },
-            )
-
             mock_llm_b = MagicMock(spec=LLMClient)
             mock_llm_b.chat.side_effect = [
                 LLMResponse(content=None, tool_calls=[tc_ev]),
-                LLMResponse(content=None, tool_calls=[tc_score]),
-                LLMResponse(content="Analysis complete: RESEARCH_MORE.", tool_calls=[]),
+                LLMResponse(content="Analysis complete: evidence added.", tool_calls=[]),
             ]
 
             harness_b = Harness(

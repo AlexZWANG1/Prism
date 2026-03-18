@@ -6,6 +6,7 @@ load_dotenv()
 from core.config import load_config, load_soul, DB_PATH
 from core.harness import Harness, HarnessConfig, HarnessEvent, EventType
 from core.loop_detector import LoopDetectionConfig
+from core.skill_loader import load_skills
 from llm.openai_client import OpenAIClient
 from tools.retrieval import SQLiteRetriever
 from tools.base import Tool
@@ -17,16 +18,16 @@ from tools.financials import (
     fmp_get_financials, FMP_GET_FINANCIALS_SCHEMA,
     fred_get_macro, FRED_GET_MACRO_SCHEMA,
 )
-from tools.knowledge import (
-    extract_observation, EXTRACT_OBSERVATION_SCHEMA,
-    create_hypothesis, CREATE_HYPOTHESIS_SCHEMA,
-    add_evidence_card, ADD_EVIDENCE_CARD_SCHEMA,
-    run_valuation, RUN_VALUATION_SCHEMA,
-    compute_trade_score, COMPUTE_TRADE_SCORE_SCHEMA,
-    write_audit_trail, WRITE_AUDIT_TRAIL_SCHEMA,
-    query_knowledge, QUERY_KNOWLEDGE_SCHEMA,
-    memory_search, MEMORY_SEARCH_SCHEMA,
+from tools.market import (
+    yf_quote, YF_QUOTE_SCHEMA,
+    yf_history, YF_HISTORY_SCHEMA,
 )
+from tools.memory import (
+    recall_memory, RECALL_MEMORY_SCHEMA,
+    save_memory, SAVE_MEMORY_SCHEMA,
+    check_calibration, CHECK_CALIBRATION_SCHEMA,
+)
+from tools.semantic_search import memory_search, MEMORY_SEARCH_SCHEMA
 
 
 def _cli_event_handler(event: HarnessEvent):
@@ -48,7 +49,7 @@ def _cli_event_handler(event: HarnessEvent):
         print(f"    → {event.data.get('tool', '?')}()")
     elif event.type == EventType.TOOL_END:
         status = event.data.get('status', '?')
-        symbol = "✓" if status == "ok" else "✗"
+        symbol = "OK" if status == "ok" else "ERR"
         print(f"    {symbol} {event.data.get('tool', '?')} [{status}]")
     elif event.type == EventType.LOOP_DETECTED:
         print(f"  [loop] {event.data.get('message', '')}")
@@ -79,33 +80,47 @@ def build_harness(
     h = cfg["harness"]
     budget_cfg = cfg.get("budget", {})
     loop_cfg = cfg.get("loop_detection", {})
+    skills_cfg = cfg.get("skills", {})
 
     db = db_path or DB_PATH
     retriever = SQLiteRetriever(db)
-    soul = load_soul()
 
-    external_tools = [
+    # Core tools — external data sources
+    core_tools = [
         Tool(exa_search, EXA_SEARCH_SCHEMA),
         Tool(web_fetch, WEB_FETCH_SCHEMA),
         Tool(fmp_get_financials, FMP_GET_FINANCIALS_SCHEMA),
         Tool(fred_get_macro, FRED_GET_MACRO_SCHEMA),
+        Tool(yf_quote, YF_QUOTE_SCHEMA),
+        Tool(yf_history, YF_HISTORY_SCHEMA),
     ]
 
-    knowledge_tools = [
-        Tool(extract_observation, EXTRACT_OBSERVATION_SCHEMA, retriever=retriever),
-        Tool(create_hypothesis, CREATE_HYPOTHESIS_SCHEMA, retriever=retriever),
-        Tool(add_evidence_card, ADD_EVIDENCE_CARD_SCHEMA, retriever=retriever),
-        Tool(run_valuation, RUN_VALUATION_SCHEMA, retriever=retriever),
-        Tool(compute_trade_score, COMPUTE_TRADE_SCORE_SCHEMA, retriever=retriever),
-        Tool(write_audit_trail, WRITE_AUDIT_TRAIL_SCHEMA, retriever=retriever),
-        Tool(query_knowledge, QUERY_KNOWLEDGE_SCHEMA, retriever=retriever),
+    # Memory tools
+    memory_tools = [
+        Tool(recall_memory, RECALL_MEMORY_SCHEMA),
+        Tool(save_memory, SAVE_MEMORY_SCHEMA),
+        Tool(check_calibration, CHECK_CALIBRATION_SCHEMA),
         Tool(memory_search, MEMORY_SEARCH_SCHEMA, retriever=retriever),
     ]
 
+    # Skill tools (hypothesis, dcf, etc.) — auto-discovered
+    skills_dir = skills_cfg.get("dir", "./skills")
+    skill_tools, skill_soul = load_skills(
+        skills_dir, context={"retriever": retriever}
+    )
+
+    # Soul = base soul files + skill soul text
+    base_soul = load_soul()
+    full_soul = base_soul
+    if skill_soul:
+        full_soul = base_soul + "\n\n---\n\n" + skill_soul
+
+    all_tools = core_tools + memory_tools + skill_tools
+
     harness = Harness(
         llm=OpenAIClient(),
-        tools=external_tools + knowledge_tools,
-        soul=soul,
+        tools=all_tools,
+        soul=full_soul,
         config=HarnessConfig(
             max_tool_rounds=h.get("max_tool_rounds", 25),
             max_total_tool_calls=h.get("max_total_tool_calls", 60),

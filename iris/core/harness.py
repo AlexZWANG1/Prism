@@ -37,6 +37,8 @@ class EventType(str, Enum):
     TURN_END = "turn_end"
     TOOL_START = "tool_start"
     TOOL_END = "tool_end"
+    ASSISTANT_MESSAGE = "assistant_message"
+    TOOLS_SCORED = "tools_scored"
     TEXT_DELTA = "text_delta"
     TEXT = "text"
     CONTEXT_COMPACTED = "context_compacted"
@@ -232,6 +234,22 @@ class Harness:
                     error="LLM call failed after all retries",
                     budget=budget,
                 )
+
+            # Audit: log full assistant message (text + tool decisions)
+            self._emit(
+                EventType.ASSISTANT_MESSAGE,
+                {
+                    "run_id": self._current_run_id,
+                    "round": main_round,
+                    "content": (response.content or "")[:5000],
+                    "tool_calls": [
+                        {"name": tc.name, "arguments": tc.arguments}
+                        for tc in (response.tool_calls or [])
+                    ],
+                    "input_tokens": response.input_tokens,
+                    "output_tokens": response.output_tokens,
+                },
+            )
 
             if not response.tool_calls:
                 self._emit(
@@ -486,12 +504,16 @@ class Harness:
 
         result = self.tool_hooks.after_tool_call(before_ctx, result)
 
+        # Build audit-friendly result snapshot (truncated for storage)
+        result_snapshot = self._truncate_for_audit(result.data) if result.status == "ok" else None
+
         tool_log.append(
             {
                 "tool": tc.name,
                 "status": result.status,
                 "tags": result.tags,
                 "error": result.error,
+                "result": result_snapshot,
             }
         )
 
@@ -503,7 +525,9 @@ class Harness:
                 "tool": tc.name,
                 "status": result.status,
                 "tags": result.tags,
-                "result": result.data if result.status == "ok" else None,
+                "result": result_snapshot,
+                "error": result.error if result.status != "ok" else None,
+                "hint": result.hint if result.status != "ok" else None,
             },
         )
 
@@ -588,6 +612,18 @@ class Harness:
                 continue
             selected.append(name)
 
+        # Audit: log tool selection scoring
+        self._emit(
+            EventType.TOOLS_SCORED,
+            {
+                "run_id": self._current_run_id,
+                "scores": {name: score for score, name in sorted(scored, key=lambda x: x[0], reverse=True)},
+                "signals": signals,
+                "always_exposed": always,
+                "selected": selected,
+            },
+        )
+
         if not selected:
             fallback = [
                 "query_knowledge",
@@ -629,6 +665,30 @@ class Harness:
             (tc.name, json.dumps(tc.arguments, sort_keys=True, ensure_ascii=False))
             for tc in tool_calls
         )
+
+    def _truncate_for_audit(self, obj, max_str: int = 2000, max_list: int = 10, max_depth: int = 4):
+        """Truncate tool result data for audit logging. More generous than _deep_truncate."""
+        if max_depth <= 0:
+            return "...[depth limit]"
+        if obj is None:
+            return None
+        if isinstance(obj, (int, float, bool)):
+            return obj
+        if isinstance(obj, str):
+            if len(obj) > max_str:
+                return obj[:max_str] + f"...[{len(obj)} chars total]"
+            return obj
+        if isinstance(obj, list):
+            items = [self._truncate_for_audit(item, max_str, max_list, max_depth - 1) for item in obj[:max_list]]
+            if len(obj) > max_list:
+                items.append(f"...[{len(obj) - max_list} more items]")
+            return items
+        if isinstance(obj, dict):
+            return {
+                k: self._truncate_for_audit(v, max_str, max_list, max_depth - 1)
+                for k, v in obj.items()
+            }
+        return str(obj)[:max_str]
 
     def _compress(self, result: dict, tool_name: str) -> dict:
         threshold = int(self.config.tool_compress_overrides.get(tool_name, self.config.compress_threshold_chars))

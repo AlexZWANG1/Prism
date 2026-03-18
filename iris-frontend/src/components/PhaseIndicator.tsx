@@ -1,55 +1,105 @@
 "use client";
 
 import { useAnalysisStore } from "@/hooks/useAnalysisStore";
-import type { Phase } from "@/types/analysis";
+import type { Phase, PageState } from "@/types/analysis";
 
 const phases: { key: Phase; label: string; color: string }[] = [
-  { key: "gather", label: "收集", color: "var(--phase-gather)" },
-  { key: "analyze", label: "分析", color: "var(--phase-analyze)" },
-  { key: "evaluate", label: "评估", color: "var(--phase-evaluate)" },
-  { key: "finalize", label: "总结", color: "var(--phase-finalize)" },
+  { key: "gather", label: "收集", color: "var(--iris-phase-gather)" },
+  { key: "analyze", label: "分析", color: "var(--iris-phase-analyze)" },
+  { key: "evaluate", label: "评估", color: "var(--iris-phase-evaluate)" },
+  { key: "finalize", label: "总结", color: "var(--iris-phase-finalize)" },
 ];
+
+function CheckIcon({ size = 10 }: { size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={3}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M5 13l4 4L19 7" />
+    </svg>
+  );
+}
 
 export function PhaseIndicator() {
   const currentPhase = useAnalysisStore((s) => s.currentPhase);
-  const pageState = useAnalysisStore((s) => s.pageState);
+  const pageState: PageState = useAnalysisStore((s) => s.pageState);
   const currentIdx = phases.findIndex((p) => p.key === currentPhase);
+  const isComplete = pageState === "COMPLETE";
 
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex items-center" style={{ height: 36 }}>
       {phases.map((phase, idx) => {
-        const isActive = phase.key === currentPhase;
-        const isPast = idx < currentIdx;
-        const isComplete = pageState === "COMPLETE";
+        const isActive = phase.key === currentPhase && !isComplete;
+        const isPast = idx < currentIdx || isComplete;
 
         return (
-          <div key={phase.key} className="flex items-center gap-2">
+          <div key={phase.key} className="flex items-center">
+            {/* Connector line before this phase (not for the first) */}
             {idx > 0 && (
               <div
-                className="h-px w-6"
+                className="mx-1.5 h-px transition-all duration-500"
                 style={{
-                  background: isPast || isComplete ? phase.color : "var(--iris-border)",
+                  width: 28,
+                  background: isPast
+                    ? "var(--iris-accent)"
+                    : "var(--iris-text-muted)",
+                  opacity: isPast ? 1 : 0.3,
                 }}
               />
             )}
+
             <div className="flex items-center gap-1.5">
-              <div
-                className={`h-2.5 w-2.5 rounded-full transition-all ${
-                  isActive && !isComplete ? "pulse-dot" : ""
-                }`}
-                style={{
-                  background:
-                    isPast || isActive || isComplete ? phase.color : "var(--iris-border)",
-                  boxShadow:
-                    isActive && !isComplete ? `0 0 8px ${phase.color}60` : "none",
-                }}
-              />
+              {/* Dot / Check */}
+              <div className="relative flex items-center justify-center">
+                {isPast ? (
+                  /* Completed: checkmark */
+                  <div
+                    className="flex h-4 w-4 items-center justify-center rounded-full"
+                    style={{ background: phase.color }}
+                  >
+                    <span className="text-[var(--iris-bg)]">
+                      <CheckIcon size={10} />
+                    </span>
+                  </div>
+                ) : isActive ? (
+                  /* Active: glowing dot with ring animation */
+                  <>
+                    <div
+                      className="absolute h-4 w-4 animate-ping rounded-full opacity-30"
+                      style={{ background: "var(--iris-accent)" }}
+                    />
+                    <div
+                      className="relative h-2.5 w-2.5 rounded-full"
+                      style={{
+                        background: "var(--iris-accent)",
+                        boxShadow: "0 0 8px rgba(201,168,76,0.5)",
+                      }}
+                    />
+                  </>
+                ) : (
+                  /* Future: muted dot */
+                  <div
+                    className="h-2 w-2 rounded-full"
+                    style={{ background: "var(--iris-text-muted)", opacity: 0.4 }}
+                  />
+                )}
+              </div>
+
+              {/* Label */}
               <span
-                className="text-xs font-medium transition-colors"
+                className="text-xs font-medium transition-colors duration-300"
                 style={{
-                  color:
-                    isPast || isActive || isComplete
-                      ? phase.color
+                  color: isPast
+                    ? phase.color
+                    : isActive
+                      ? "var(--iris-accent)"
                       : "var(--iris-text-muted)",
                 }}
               >
@@ -60,19 +110,24 @@ export function PhaseIndicator() {
         );
       })}
 
-      {pageState === "COMPLETE" && (
-        <div className="ml-auto flex items-center gap-1.5">
-          <svg className="h-4 w-4 text-[var(--phase-gather)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-          </svg>
-          <span className="text-xs font-medium text-[var(--phase-gather)]">完成</span>
+      {/* Status badge on the right */}
+      {isComplete && (
+        <div className="ml-auto flex items-center gap-1.5 rounded-full border border-[var(--iris-bullish)]/20 bg-[var(--iris-bullish)]/10 px-2.5 py-0.5">
+          <span className="text-[var(--iris-bullish)]">
+            <CheckIcon size={10} />
+          </span>
+          <span className="text-xs font-medium text-[var(--iris-bullish)]">
+            完成
+          </span>
         </div>
       )}
 
       {pageState === "WAITING" && (
-        <div className="ml-auto flex items-center gap-1.5">
-          <div className="h-2 w-2 animate-pulse rounded-full bg-[var(--event-user)]" />
-          <span className="text-xs font-medium text-[var(--event-user)]">等待输入</span>
+        <div className="ml-auto flex items-center gap-1.5 rounded-full border border-[var(--iris-accent)]/20 bg-[var(--iris-accent)]/10 px-2.5 py-0.5">
+          <div className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--iris-accent)]" />
+          <span className="text-xs font-medium text-[var(--iris-accent)]">
+            等待输入
+          </span>
         </div>
       )}
     </div>

@@ -92,6 +92,60 @@ class TradeScore(BaseModel):
     created_at: datetime
 
 
+class Position(BaseModel):
+    """Paper portfolio position."""
+    ticker: str
+    shares: float
+    avg_cost: float
+    entry_date: datetime
+    hypothesis_id: str
+    sector: str = ""
+    target_weight: float = 0.0
+
+
+class TradeSignal(BaseModel):
+    """Output of generate_trade_signal."""
+    id: str
+    ticker: str
+    action: Literal["BUY", "SELL", "TRIM", "HOLD", "WATCH", "NO_ENTRY"]
+    target_weight: float = Field(ge=0.0, le=1.0)
+    conviction: Optional[str] = None
+    discount_pct: Optional[float] = None
+    signal_strength: Literal["MANDATORY", "STRONG", "MODERATE", "WEAK", "NEUTRAL", "BLOCKED"]
+    reasoning: str
+    constraint_checks: list[str] = Field(default_factory=list)
+    created_at: datetime
+
+
+class AssumptionError(BaseModel):
+    """Single assumption prediction vs actual comparison."""
+    metric: str
+    predicted: float
+    actual: float
+    error: float
+    abs_error: float
+    direction: Literal["overestimate", "underestimate"]
+
+
+class Attribution(BaseModel):
+    """P&L attribution record — feeds the experience library."""
+    id: str
+    ticker: str
+    hypothesis_id: str
+    attribution_date: datetime
+    assumption_errors: list[AssumptionError] = Field(default_factory=list)
+    largest_error_source: Optional[str] = None
+    stock_return_pct: float
+    benchmark_return_pct: float
+    alpha_vs_benchmark_pct: float
+    alpha_vs_sector_pct: Optional[float] = None
+    sizing_assessment: Optional[Literal[
+        "undersized_winner", "oversized_loser",
+        "well_sized_winner", "well_sized_loser", "neutral"
+    ]] = None
+    experience_entries: list[dict] = Field(default_factory=list)
+
+
 class AuditTrail(BaseModel):
     id: str
     company: str

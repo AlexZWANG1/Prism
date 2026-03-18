@@ -1,0 +1,7 @@
+max_projection_years: 10
+terminal_growth_max: 0.04
+wacc_range: [0.05, 0.20]
+comps_outlier_threshold: 0.50
+sensitivity:
+  wacc_steps: [-0.02, -0.01, 0, 0.01, 0.02]
+  growth_steps: [-0.01, -0.005, 0, 0.005, 0.01]

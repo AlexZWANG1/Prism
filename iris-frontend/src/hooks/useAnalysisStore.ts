@@ -19,6 +19,8 @@ interface AnalysisStore {
   analysisId: string | null;
   timeline: TimelineEvent[];
   reasoningText: string;
+  thinkingText: string;
+  _inThinkingBlock: boolean;
   currentPhase: Phase;
   pendingQuestion: PendingQuestion | null;
   activeTab: ActiveTab;
@@ -75,6 +77,8 @@ export const useAnalysisStore = create<AnalysisStore>((set, get) => ({
   analysisId: null,
   timeline: [],
   reasoningText: "",
+  thinkingText: "",
+  _inThinkingBlock: false,
   currentPhase: "gather",
   pendingQuestion: null,
   activeTab: "data",
@@ -85,7 +89,7 @@ export const useAnalysisStore = create<AnalysisStore>((set, get) => ({
   memoryPanel: initialMemoryPanel,
 
   startAnalysis: async (query: string, contextDocs?: string[]) => {
-    set({ pageState: "RUNNING", timeline: [], reasoningText: "", currentPhase: "gather" });
+    set({ pageState: "RUNNING", timeline: [], reasoningText: "", thinkingText: "", _inThinkingBlock: false, currentPhase: "gather" });
     try {
       const response = await api.startAnalysis({
         query,
@@ -220,7 +224,55 @@ export const useAnalysisStore = create<AnalysisStore>((set, get) => ({
       case "text_delta": {
         const content = event.data.content as string;
         if (content) {
-          set((s) => ({ reasoningText: s.reasoningText + content }));
+          set((s) => {
+            // Stream-aware state machine for <thinking> blocks
+            let inThinking = s._inThinkingBlock;
+            let thinkingBuf = s.thinkingText;
+            let reasoningBuf = s.reasoningText;
+
+            // Check for tag transitions within this chunk
+            const openIdx = content.indexOf("<thinking>");
+            const closeIdx = content.indexOf("</thinking>");
+
+            if (openIdx !== -1 && closeIdx !== -1 && closeIdx > openIdx) {
+              // Both open and close in same chunk
+              const before = content.slice(0, openIdx);
+              const inside = content.slice(openIdx + 10, closeIdx);
+              const after = content.slice(closeIdx + 12);
+              if (before) reasoningBuf += before;
+              if (inside) thinkingBuf += inside + "\n---\n";
+              if (after) reasoningBuf += after;
+              inThinking = false;
+            } else if (openIdx !== -1) {
+              // Entering thinking block
+              const before = content.slice(0, openIdx);
+              const after = content.slice(openIdx + 10);
+              if (before) reasoningBuf += before;
+              if (after) thinkingBuf += after;
+              inThinking = true;
+            } else if (closeIdx !== -1) {
+              // Exiting thinking block
+              const before = content.slice(0, closeIdx);
+              const after = content.slice(closeIdx + 12);
+              if (before) thinkingBuf += before;
+              thinkingBuf += "\n---\n";
+              if (after) reasoningBuf += after;
+              inThinking = false;
+            } else {
+              // No tags — route based on current state
+              if (inThinking) {
+                thinkingBuf += content;
+              } else {
+                reasoningBuf += content;
+              }
+            }
+
+            return {
+              reasoningText: reasoningBuf,
+              thinkingText: thinkingBuf,
+              _inThinkingBlock: inThinking,
+            };
+          });
         }
         break;
       }
@@ -354,6 +406,8 @@ export const useAnalysisStore = create<AnalysisStore>((set, get) => ({
       analysisId: null,
       timeline: [],
       reasoningText: "",
+      thinkingText: "",
+      _inThinkingBlock: false,
       currentPhase: "gather",
       pendingQuestion: null,
       activeTab: "data",

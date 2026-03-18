@@ -2,7 +2,7 @@ import os
 import httpx
 from .base import ToolResult, make_tool_schema
 
-FMP_BASE = "https://financialmodelingprep.com/api/v3"
+FMP_BASE = "https://financialmodelingprep.com/stable"
 FRED_BASE = "https://api.stlouisfed.org/fred"
 
 FMP_GET_FINANCIALS_SCHEMA = make_tool_schema(
@@ -52,7 +52,7 @@ def fmp_get_financials(ticker: str, statement_type: str, period: str = "annual")
     if not api_key:
         return ToolResult.fail("FMP_API_KEY not set", hint="Add to .env file")
 
-    url = f"{FMP_BASE}/{statement_type}/{ticker.upper()}?period={period}&limit=4&apikey={api_key}"
+    url = f"{FMP_BASE}/{statement_type}?symbol={ticker.upper()}&period={period}&limit=4&apikey={api_key}"
     try:
         with httpx.Client(timeout=15.0) as client:
             response = client.get(url)

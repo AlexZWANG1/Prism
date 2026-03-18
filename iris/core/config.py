@@ -14,6 +14,8 @@ import yaml
 
 _CONFIG_CACHE: dict | None = None
 
+FALLBACK_SOUL = "# IRIS Investment Soul\nAnalyze investments rigorously. Every claim needs evidence."
+
 
 def _find_config_path() -> Path:
     """Find iris_config.yaml relative to this file."""
@@ -47,7 +49,7 @@ def reset_config_cache():
 def get(key_path: str, default: Any = None) -> Any:
     """
     Dot-path access into config.
-    Example: get("scoring.weights.fundamental_quality") → 0.25
+    Example: get("harness.max_tool_rounds") → 25
     """
     config = load_config()
     keys = key_path.split(".")
@@ -60,17 +62,34 @@ def get(key_path: str, default: Any = None) -> Any:
     return node
 
 
-def load_soul() -> str:
-    """Load the Prompt layer from soul/*.md files."""
-    soul_dir = Path(__file__).parent.parent / "soul"
+def load_soul(soul_dir: Path = None) -> str:
+    """Load the Prompt layer from soul/*.md files (directory scan)."""
+    soul_dir = soul_dir or Path(__file__).parent.parent / "soul"
     parts = []
-    for filename in ("v0.1.md", "role.md", "analysis_guide.md"):
-        path = soul_dir / filename
-        if path.exists():
-            parts.append(path.read_text(encoding="utf-8"))
-    if not parts:
-        return "# IRIS Investment Soul\nAnalyze investments rigorously. Every claim needs evidence."
-    return "\n\n---\n\n".join(parts)
+    for md_file in sorted(soul_dir.glob("*.md")):
+        parts.append(md_file.read_text(encoding="utf-8"))
+    return "\n\n---\n\n".join(parts) if parts else FALLBACK_SOUL
+
+
+# ── Skill config registry ──
+
+_skill_configs: dict[str, dict] = {}
+
+
+def register_skill_config(skill_name: str, config: dict):
+    _skill_configs[skill_name] = config
+
+
+def get_skill_config(skill_name: str, key: str = None, default: Any = None) -> Any:
+    cfg = _skill_configs.get(skill_name, {})
+    if key is None:
+        return cfg
+    return cfg.get(key, default)
+
+
+def reset_skill_configs():
+    """Clear skill configs — useful for tests."""
+    _skill_configs.clear()
 
 
 DB_PATH = os.getenv("IRIS_DB_PATH", "./iris.db")

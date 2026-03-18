@@ -44,6 +44,7 @@ export function useAnalysisStream(analysisId: string | null) {
     for (const eventType of SSE_EVENT_TYPES) {
       es.addEventListener(eventType, (evt: MessageEvent) => {
         try {
+          if (evt.data === undefined || evt.data === null) return;
           const data = JSON.parse(evt.data);
           const sseEvent: SSEEvent = {
             type: eventType,

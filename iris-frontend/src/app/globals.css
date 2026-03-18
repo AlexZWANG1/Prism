@@ -1,38 +1,43 @@
+@import url("https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&display=swap");
 @import "tailwindcss";
 
-@font-face {
-  font-family: "Inter";
-  font-style: normal;
-  font-weight: 100 900;
-  font-display: swap;
-  src: url("https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap");
-}
+/* ─── IRIS Financial Intelligence Terminal ─── */
 
 :root {
-  --iris-bg: #0a0a0f;
-  --iris-surface: #13131a;
-  --iris-surface-hover: #1a1a24;
-  --iris-border: #2a2a3a;
-  --iris-text: #e8e8ed;
-  --iris-text-secondary: #a0a0b0;
-  --iris-text-muted: #606070;
-  --iris-accent: #6366f1;
-  --iris-accent-hover: #818cf8;
+  /* Core palette */
+  --iris-bg: #07080C;
+  --iris-surface: #0E1017;
+  --iris-surface-hover: #161821;
+  --iris-border: #1E2030;
+  --iris-border-active: #2A2D42;
 
-  --phase-gather: #22c55e;
-  --phase-analyze: #3b82f6;
-  --phase-evaluate: #f59e0b;
-  --phase-finalize: #8b5cf6;
+  /* Text hierarchy */
+  --iris-text: #D4D4DC;
+  --iris-text-secondary: #8B8B9E;
+  --iris-text-muted: #525264;
 
-  --event-search: #22c55e;
-  --event-analyze: #3b82f6;
-  --event-model: #f59e0b;
-  --event-system: #9ca3af;
-  --event-user: #a855f7;
+  /* Brand accents */
+  --iris-accent: #C9A84C;
+  --iris-accent-hover: #D4B65E;
+  --iris-data: #2DD4BF;
 
-  --status-bullish: #22c55e;
-  --status-bearish: #ef4444;
-  --status-neutral: #f59e0b;
+  /* Phase colors */
+  --phase-gather: #22C55E;
+  --phase-analyze: #3B82F6;
+  --phase-evaluate: #F59E0B;
+  --phase-finalize: #A855F7;
+
+  /* Event colors */
+  --event-search: #22C55E;
+  --event-analyze: #3B82F6;
+  --event-model: #F59E0B;
+  --event-system: #9CA3AF;
+  --event-user: #A855F7;
+
+  /* Status / sentiment */
+  --status-bullish: #22C55E;
+  --status-bearish: #EF4444;
+  --status-neutral: #EAB308;
 }
 
 * {
@@ -46,15 +51,30 @@ html {
 body {
   background: var(--iris-bg);
   color: var(--iris-text);
-  font-family: "Inter", system-ui, -apple-system, sans-serif;
+  font-family: "DM Sans", system-ui, -apple-system, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  position: relative;
 }
 
-/* Custom scrollbar */
+/* Thin noise texture overlay */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  pointer-events: none;
+  opacity: 0.025;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+  background-repeat: repeat;
+  background-size: 256px 256px;
+}
+
+/* ─── Custom Scrollbar ─── */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 4px;
+  height: 4px;
 }
 
 ::-webkit-scrollbar-track {
@@ -62,15 +82,130 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--iris-border);
-  border-radius: 3px;
+  background: var(--iris-accent);
+  border-radius: 2px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--iris-text-muted);
+  background: var(--iris-accent-hover);
 }
 
-/* Timeline connector line */
+/* Firefox scrollbar */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--iris-accent) transparent;
+}
+
+/* ─── Animations ─── */
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.pulse-dot {
+  animation: pulse-dot 1.5s ease-in-out infinite;
+}
+
+.shimmer {
+  background: linear-gradient(
+    90deg,
+    var(--iris-surface) 25%,
+    var(--iris-surface-hover) 50%,
+    var(--iris-surface) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.8s ease-in-out infinite;
+}
+
+.fade-in {
+  animation: fade-in 0.3s ease-out forwards;
+}
+
+.slide-up {
+  animation: slide-up 0.4s ease-out forwards;
+}
+
+/* ─── Glass Card ─── */
+.glass-card {
+  background: rgba(14, 16, 23, 0.7);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--iris-border);
+  border-radius: 12px;
+  box-shadow:
+    0 0 0 1px rgba(201, 168, 76, 0.04),
+    0 4px 24px rgba(0, 0, 0, 0.3);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.glass-card:hover {
+  border-color: var(--iris-border-active);
+  box-shadow:
+    0 0 0 1px rgba(201, 168, 76, 0.08),
+    0 8px 32px rgba(0, 0, 0, 0.4);
+}
+
+/* ─── Table Zebra Striping ─── */
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+tbody tr:nth-child(even) {
+  background: rgba(14, 16, 23, 0.5);
+}
+
+tbody tr:nth-child(odd) {
+  background: rgba(22, 24, 33, 0.3);
+}
+
+tbody tr:hover {
+  background: var(--iris-surface-hover);
+}
+
+th {
+  background: var(--iris-surface);
+  font-weight: 600;
+  text-align: left;
+  color: var(--iris-text-secondary);
+  font-size: 0.75rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+th, td {
+  padding: 0.625rem 0.875rem;
+  border-bottom: 1px solid var(--iris-border);
+}
+
+/* ─── Data / Mono Text ─── */
+.font-data {
+  font-family: "JetBrains Mono", "Consolas", monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ─── Timeline Connector ─── */
 .timeline-connector {
   position: absolute;
   left: 15px;
@@ -80,22 +215,12 @@ body {
   background: var(--iris-border);
 }
 
-/* Pulse animation for running items */
-@keyframes pulse-dot {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.4; }
-}
-
-.pulse-dot {
-  animation: pulse-dot 1.5s ease-in-out infinite;
-}
-
-/* Sensitivity heatmap cell */
+/* ─── Heatmap Cell ─── */
 .heatmap-cell {
   transition: background-color 0.2s ease;
 }
 
-/* Markdown prose styling */
+/* ─── Prose / Markdown Styling ─── */
 .prose-iris {
   line-height: 1.7;
 }
@@ -124,6 +249,7 @@ body {
   border-radius: 4px;
   font-family: "JetBrains Mono", monospace;
   font-size: 0.875em;
+  color: var(--iris-data);
 }
 
 .prose-iris pre {
@@ -137,6 +263,7 @@ body {
 .prose-iris pre code {
   background: none;
   padding: 0;
+  color: var(--iris-text);
 }
 
 .prose-iris ul,
@@ -173,4 +300,10 @@ body {
   padding-left: 1em;
   color: var(--iris-text-muted);
   margin-bottom: 0.75em;
+}
+
+/* ─── Selection Color ─── */
+::selection {
+  background: rgba(201, 168, 76, 0.25);
+  color: var(--iris-text);
 }

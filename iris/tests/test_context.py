@@ -75,7 +75,7 @@ def test_memory_flush_skipped_when_disabled():
 def test_full_context_system_integration(tmp_path):
     """Integration: cross-session loading + compaction + memory flush all work together."""
     from tools.retrieval import SQLiteRetriever
-    from tools.knowledge import extract_observation, create_hypothesis
+    from skills.hypothesis.tools import extract_observation, create_hypothesis
 
     db_path = str(tmp_path / "test.db")
     retriever = SQLiteRetriever(db_path)

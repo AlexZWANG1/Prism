@@ -1,0 +1,7 @@
+scaling_factor: 10
+min_evidence_count: 3
+direction_map:
+  supports: 1.0
+  refutes: -1.0
+  mixed: 0.2
+  neutral: 0.0

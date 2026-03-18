@@ -26,39 +26,86 @@ export default function HomePage() {
   }, []);
 
   return (
-    <div className="mx-auto max-w-5xl px-6 py-12">
-      <div className="mb-12 text-center">
-        <h1 className="mb-3 text-4xl font-bold tracking-tight">
-          IRIS
-        </h1>
-        <p className="text-lg text-[var(--iris-text-secondary)]">
-          智能投资研究系统
+    <div className="min-h-screen" style={{ backgroundColor: "var(--iris-bg)" }}>
+      {/* Hero Section */}
+      <div className="flex flex-col items-center justify-center px-6 pt-24 pb-16">
+        <div className="mb-2 flex items-center gap-3">
+          <div
+            className="h-px w-12"
+            style={{ backgroundColor: "var(--iris-accent)", opacity: 0.4 }}
+          />
+          <h1
+            className="text-6xl font-bold tracking-[0.25em]"
+            style={{ color: "var(--iris-accent)" }}
+          >
+            IRIS
+          </h1>
+          <div
+            className="h-px w-12"
+            style={{ backgroundColor: "var(--iris-accent)", opacity: 0.4 }}
+          />
+        </div>
+        <p
+          className="mb-12 text-sm font-light tracking-[0.2em] uppercase"
+          style={{ color: "var(--iris-text-secondary)" }}
+        >
+          Investment Research Intelligence System
         </p>
+
+        <SearchBar />
       </div>
 
-      <SearchBar />
-
-      <div className="mt-12">
-        <h2 className="mb-6 text-xl font-semibold">追踪列表</h2>
+      {/* Watchlist Section */}
+      <div className="mx-auto max-w-6xl px-6 pb-24">
         {loading ? (
-          <div className="flex items-center justify-center py-16">
-            <div className="h-8 w-8 animate-spin rounded-full border-2 border-[var(--iris-accent)] border-t-transparent" />
+          <div className="flex items-center justify-center py-20">
+            <div
+              className="h-8 w-8 animate-spin rounded-full border-2 border-t-transparent"
+              style={{ borderColor: "var(--iris-accent)", borderTopColor: "transparent" }}
+            />
           </div>
         ) : error ? (
-          <div className="rounded-xl border border-red-500/20 bg-red-500/5 px-6 py-8 text-center text-red-400">
+          <div
+            className="mx-auto max-w-md rounded-xl border px-6 py-8 text-center text-sm"
+            style={{
+              borderColor: "rgba(239, 68, 68, 0.2)",
+              backgroundColor: "rgba(239, 68, 68, 0.05)",
+              color: "#f87171",
+            }}
+          >
             {error}
           </div>
         ) : watchlist.length > 0 ? (
           <WatchlistGrid items={watchlist} />
         ) : (
-          <div className="rounded-xl border border-dashed border-[var(--iris-border)] px-6 py-16 text-center">
-            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-[var(--iris-surface)]">
-              <svg className="h-6 w-6 text-[var(--iris-text-muted)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
+          <div
+            className="mx-auto max-w-md rounded-xl border border-dashed px-8 py-20 text-center"
+            style={{ borderColor: "var(--iris-border)" }}
+          >
+            <div
+              className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-full"
+              style={{ backgroundColor: "var(--iris-surface)" }}
+            >
+              <svg
+                className="h-6 w-6"
+                style={{ color: "var(--iris-text-muted)" }}
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={1.5}
+                  d="M3.75 3v11.25A2.25 2.25 0 006 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0118 16.5h-2.25m-7.5 0h7.5m-7.5 0l-1 3m8.5-3l1 3m0 0l.5 1.5m-.5-1.5h-9.5m0 0l-.5 1.5"
+                />
               </svg>
             </div>
-            <p className="text-[var(--iris-text-muted)]">
-              还没有追踪任何公司。在上方输入 ticker 开始你的第一次分析。
+            <p
+              className="text-sm leading-relaxed"
+              style={{ color: "var(--iris-text-muted)" }}
+            >
+              尚未追踪任何标的。在上方搜索栏输入 ticker 或公司名称，启动你的第一次深度分析。
             </p>
           </div>
         )}

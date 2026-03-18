@@ -1,6 +1,8 @@
+"""Tests for hypothesis skill tools (migrated from tools/knowledge.py)."""
+
 from datetime import datetime
-from tools.knowledge import (
-    extract_observation, create_hypothesis, add_evidence_card, compute_trade_score
+from skills.hypothesis.tools import (
+    extract_observation, create_hypothesis, add_evidence_card, query_knowledge
 )
 from tools.retrieval import SQLiteRetriever
 
@@ -81,96 +83,65 @@ def test_add_evidence_card_updates_confidence(tmp_path):
     assert len(updated_hyp.evidence_log) == 1
 
 
-def test_write_audit_trail_persists_to_db(tmp_path):
+def test_create_hypothesis_validates_drivers(tmp_path):
     r = make_retriever(tmp_path)
-    # Setup full chain
-    obs_result = extract_observation(
-        retriever=r, subject="NVDA", claim="Revenue up 78%",
-        source="Earnings", fact_or_view="fact", relevance=0.9,
-        citation="Revenue was...", time_str="2026-02-21", extracted_by="test"
-    )
-    hyp_result = create_hypothesis(
-        retriever=r, company="NVDA", thesis="NVDA dominance", timeframe="24m",
+    result = create_hypothesis(
+        retriever=r, company="NVDA", thesis="Test", timeframe="12m",
         drivers=[
             {"name": "d1", "description": "x", "current_assessment": "ok"},
-            {"name": "d2", "description": "y", "current_assessment": "ok"},
-            {"name": "d3", "description": "z", "current_assessment": "ok"},
         ],
-        kill_criteria=[{"description": "AMD parity"}],
-        initial_confidence=60.0,
+        kill_criteria=[{"description": "kill"}],
+        initial_confidence=50.0,
     )
-    from tools.knowledge import add_evidence_card, compute_trade_score, write_audit_trail
-    add_evidence_card(
-        retriever=r, hypothesis_id=hyp_result.data["id"],
-        observation_id=obs_result.data["id"], direction="supports",
-        reliability=0.9, independence=0.8, novelty=0.7,
-        driver_link="d1", reasoning="Direct revenue evidence"
-    )
-    score_result = compute_trade_score(
-        retriever=r, hypothesis_id=hyp_result.data["id"],
-        valuation_id=None, fundamental_quality=0.8,
-        catalyst_timing=0.6, risk_penalty=0.3,
-        reasoning="Good fundamentals, no valuation yet"
-    )
-    audit_result = write_audit_trail(
-        retriever=r,
-        trade_score_id=score_result.data["trade_score_id"],
-        documents_used=["NVDA Q4 2026 Earnings Call"],
-    )
-    assert audit_result.status == "ok"
-    assert audit_result.data["company"] == "NVDA"
-    assert audit_result.data["final_recommendation"] in (
-        "WATCH", "RESEARCH_MORE", "CANDIDATE", "INITIATE_SMALL", "HIGH_CONVICTION"
-    )
-    # Verify persisted
-    saved = r.get_audit_trail("NVDA")
-    assert saved is not None
-    assert saved.company == "NVDA"
+    assert result.status == "error"
+    assert "3 drivers" in result.error
 
 
-def test_compute_trade_score_caps_without_valuation(tmp_path):
+def test_create_hypothesis_validates_confidence(tmp_path):
     r = make_retriever(tmp_path)
-    hyp_result = create_hypothesis(
+    result = create_hypothesis(
         retriever=r, company="NVDA", thesis="Test", timeframe="12m",
         drivers=[
             {"name": "d1", "description": "x", "current_assessment": "ok"},
             {"name": "d2", "description": "y", "current_assessment": "ok"},
             {"name": "d3", "description": "z", "current_assessment": "ok"},
         ],
-        kill_criteria=[{"description": "kill 1"}],
-        initial_confidence=80.0,
+        kill_criteria=[{"description": "kill"}],
+        initial_confidence=150.0,
     )
-    result = compute_trade_score(
-        retriever=r, hypothesis_id=hyp_result.data["id"],
-        valuation_id=None, fundamental_quality=0.8,
-        catalyst_timing=0.7, risk_penalty=0.2,
-        reasoning="Strong fundamentals but no valuation done yet",
-    )
-    assert result.status == "ok"
-    assert result.data["constrained_score"] <= 64
-    assert any("valuation" in r.lower() or "Valuation" in r for r in result.data["constraint_reasons"])
+    assert result.status == "error"
+    assert "range" in result.error
 
 
-def test_memory_search_returns_results(tmp_path):
-    from tools.knowledge import memory_search
-    from unittest.mock import patch
-
-    def _mock_embed(texts):
-        results = []
-        for t in texts:
-            h = hash(t) % 1000
-            results.append([h / 1000, (h * 7 % 1000) / 1000, (h * 13 % 1000) / 1000])
-        return results
-
+def test_extract_observation_validates_citation(tmp_path):
     r = make_retriever(tmp_path)
-    with patch.object(r, '_embed', side_effect=_mock_embed):
-        extract_observation(
-            retriever=r, subject="NVDA",
-            claim="Data center revenue up 78%",
-            source="Earnings", fact_or_view="fact", relevance=0.9,
-            citation="...", time_str="2026-02-21", extracted_by="test",
-        )
-        result = memory_search(retriever=r, query="NVDA revenue growth", top_k=3)
+    result = extract_observation(
+        retriever=r, subject="NVDA", claim="Test",
+        source="Test", fact_or_view="fact", relevance=0.5,
+        citation="  ", time_str="2026-01-01",
+    )
+    assert result.status == "error"
+    assert "citation" in result.error
+
+
+def test_query_knowledge_returns_both(tmp_path):
+    r = make_retriever(tmp_path)
+    extract_observation(
+        retriever=r, subject="NVDA", claim="Revenue up",
+        source="Earnings", fact_or_view="fact", relevance=0.9,
+        citation="Revenue was...", time_str="2026-02-21",
+    )
+    create_hypothesis(
+        retriever=r, company="NVDA", thesis="NVDA dominance", timeframe="24m",
+        drivers=[
+            {"name": "d1", "description": "x", "current_assessment": "ok"},
+            {"name": "d2", "description": "y", "current_assessment": "ok"},
+            {"name": "d3", "description": "z", "current_assessment": "ok"},
+        ],
+        kill_criteria=[{"description": "kill"}],
+        initial_confidence=50.0,
+    )
+    result = query_knowledge(retriever=r, subject="NVDA", object_type="both")
     assert result.status == "ok"
-    assert "results" in result.data
-    assert result.data["count"] >= 1
+    assert len(result.data["observations"]) == 1
+    assert len(result.data["hypotheses"]) == 1
