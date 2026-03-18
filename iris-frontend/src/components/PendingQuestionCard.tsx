@@ -29,52 +29,48 @@ export function PendingQuestionCard() {
   if (!pendingQuestion) return null;
 
   return (
-    <div className="rounded-xl border border-[var(--event-user)]/30 bg-[var(--event-user)]/5 p-4">
-      <div className="mb-3 flex items-start gap-2">
-        <div className="mt-0.5 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-[var(--event-user)]/20">
-          <span className="text-xs text-[var(--event-user)]">?</span>
-        </div>
-        <p className="text-sm font-medium text-[var(--iris-text)]">
+    <div className="flex items-start gap-2 border-l-2 border-l-[var(--event-user)] bg-[var(--iris-surface)] px-2 py-1.5">
+      <span className="shrink-0 text-[11px] font-semibold text-[var(--event-user)]">Q</span>
+      <div className="flex-1 min-w-0">
+        <p className="text-[12px] text-[var(--iris-text)]">
           {pendingQuestion.question}
         </p>
-      </div>
 
-      {pendingQuestion.context && (
-        <p className="mb-3 ml-7 text-xs text-[var(--iris-text-secondary)]">
-          {pendingQuestion.context}
-        </p>
-      )}
+        {pendingQuestion.context && (
+          <p className="mt-0.5 text-[10px] text-[var(--iris-text-muted)]">
+            {pendingQuestion.context}
+          </p>
+        )}
 
-      {pendingQuestion.options.length > 0 && (
-        <div className="mb-3 ml-7 flex flex-wrap gap-2">
+        <div className="mt-1 flex flex-wrap items-center gap-1">
           {pendingQuestion.options.map((option, idx) => (
             <button
               key={idx}
               onClick={() => handleOptionClick(option)}
-              className="rounded-lg border border-[var(--iris-border)] bg-[var(--iris-surface)] px-3 py-1.5 text-sm text-[var(--iris-text-secondary)] transition-all hover:border-[var(--iris-accent)] hover:text-[var(--iris-text)]"
+              className="rounded-[2px] border border-[var(--iris-border)] bg-transparent px-2 py-0.5 text-[11px] text-[var(--iris-text-secondary)] hover:border-[var(--iris-accent)] hover:text-[var(--iris-text)]"
             >
               {option}
             </button>
           ))}
-        </div>
-      )}
 
-      <form onSubmit={handleCustomSubmit} className="ml-7 flex gap-2">
-        <input
-          type="text"
-          value={customResponse}
-          onChange={(e) => setCustomResponse(e.target.value)}
-          placeholder="或输入自定义回复..."
-          className="flex-1 rounded-lg border border-[var(--iris-border)] bg-[var(--iris-surface)] px-3 py-2 text-sm text-[var(--iris-text)] placeholder:text-[var(--iris-text-muted)] focus:border-[var(--iris-accent)] focus:outline-none"
-        />
-        <button
-          type="submit"
-          disabled={!customResponse.trim()}
-          className="rounded-lg bg-[var(--event-user)] px-3 py-2 text-sm font-medium text-white transition-colors hover:opacity-90 disabled:opacity-40"
-        >
-          回复
-        </button>
-      </form>
+          <form onSubmit={handleCustomSubmit} className="flex items-center gap-1 flex-1 min-w-[120px]">
+            <input
+              type="text"
+              value={customResponse}
+              onChange={(e) => setCustomResponse(e.target.value)}
+              placeholder="自定义回复..."
+              className="flex-1 rounded-[2px] border border-[var(--iris-border)] bg-transparent px-2 py-0.5 text-[11px] text-[var(--iris-text)] placeholder:text-[var(--iris-text-muted)] focus:border-[var(--iris-accent)] focus:outline-none"
+            />
+            <button
+              type="submit"
+              disabled={!customResponse.trim()}
+              className="rounded-[2px] bg-[var(--event-user)] px-2 py-0.5 text-[11px] font-medium text-white disabled:opacity-30"
+            >
+              回复
+            </button>
+          </form>
+        </div>
+      </div>
     </div>
   );
 }

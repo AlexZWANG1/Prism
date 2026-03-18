@@ -3,16 +3,14 @@
 import { useState, useRef, useEffect } from "react";
 import { useAnalysisStore } from "@/hooks/useAnalysisStore";
 
-type ViewMode = "reasoning" | "thinking";
-
 export function AIReasoningArea() {
   const reasoningText = useAnalysisStore((s) => s.reasoningText);
   const thinkingText = useAnalysisStore((s) => s.thinkingText);
   const [expanded, setExpanded] = useState(false);
-  const [viewMode, setViewMode] = useState<ViewMode>("reasoning");
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  const activeText = viewMode === "thinking" ? thinkingText : reasoningText;
+  // Always show reasoning text only
+  const activeText = reasoningText;
 
   // Auto-scroll to bottom when expanded and new content arrives
   useEffect(() => {
@@ -27,23 +25,23 @@ export function AIReasoningArea() {
   const lineCount = lines.length;
   const previewLines = lines.slice(-2).join("\n");
 
-  const thinkingRounds = thinkingText
-    ? thinkingText.split("---").filter((s) => s.trim()).length
-    : 0;
-
   return (
     <div className="relative flex flex-col">
       {/* Header / Toggle */}
       <button
         onClick={() => setExpanded(!expanded)}
-        className="flex w-full items-center gap-2 px-5 py-2.5 text-left transition-colors hover:bg-[var(--iris-surface-hover)]"
+        className="flex w-full items-center gap-1.5 px-3 py-1.5 text-left"
+        style={{ background: "transparent" }}
       >
-        {/* Gold chevron */}
+        {/* Muted chevron */}
         <svg
-          className="h-3 w-3 flex-shrink-0 transition-transform duration-200"
+          className="flex-shrink-0"
           style={{
-            color: "var(--iris-accent)",
+            width: 10,
+            height: 10,
+            color: "var(--iris-text-muted)",
             transform: expanded ? "rotate(90deg)" : "rotate(0deg)",
+            transition: "transform 150ms",
           }}
           fill="none"
           viewBox="0 0 24 24"
@@ -58,85 +56,61 @@ export function AIReasoningArea() {
         </svg>
 
         <span
-          className="text-xs font-semibold uppercase tracking-wider"
-          style={{ color: "var(--iris-accent)" }}
-        >
-          AI 推理过程
-        </span>
-
-        {/* Line count indicator */}
-        <span
-          className="rounded-full px-1.5 py-px text-[10px] font-medium"
           style={{
-            background: "var(--iris-surface)",
-            color: "var(--iris-text-muted)",
-            border: "1px solid var(--iris-border)",
+            fontSize: 11,
+            fontWeight: 600,
+            color: "var(--iris-text-secondary)",
+            letterSpacing: "0.03em",
           }}
         >
-          {lineCount} 行
+          分析笔记
+        </span>
+
+        {/* Line count */}
+        <span
+          style={{
+            fontSize: 9,
+            color: "var(--iris-text-muted)",
+          }}
+        >
+          {lineCount}行
         </span>
       </button>
 
-      {/* Tab switcher — only when expanded and thinking exists */}
-      {expanded && thinkingText && (
-        <div className="flex gap-1 px-5 pb-2">
-          <button
-            onClick={(e) => { e.stopPropagation(); setViewMode("reasoning"); }}
-            className="rounded px-2.5 py-1 text-[11px] font-medium transition-colors"
-            style={{
-              background: viewMode === "reasoning" ? "var(--iris-accent)" : "var(--iris-surface)",
-              color: viewMode === "reasoning" ? "var(--iris-bg)" : "var(--iris-text-muted)",
-              border: `1px solid ${viewMode === "reasoning" ? "var(--iris-accent)" : "var(--iris-border)"}`,
-            }}
-          >
-            分析输出
-          </button>
-          <button
-            onClick={(e) => { e.stopPropagation(); setViewMode("thinking"); }}
-            className="rounded px-2.5 py-1 text-[11px] font-medium transition-colors"
-            style={{
-              background: viewMode === "thinking" ? "var(--iris-accent)" : "var(--iris-surface)",
-              color: viewMode === "thinking" ? "var(--iris-bg)" : "var(--iris-text-muted)",
-              border: `1px solid ${viewMode === "thinking" ? "var(--iris-accent)" : "var(--iris-border)"}`,
-            }}
-          >
-            AI 思考链 ({thinkingRounds})
-          </button>
-        </div>
-      )}
-
       {/* Content area */}
       <div
-        className="overflow-hidden transition-all duration-300 ease-in-out"
+        className="overflow-hidden"
         style={{
-          maxHeight: expanded ? "calc(40vh - 44px)" : 52,
+          maxHeight: expanded ? "calc(40vh - 36px)" : 36,
+          transition: "max-height 200ms ease-in-out",
         }}
       >
         <div className="relative">
-          {/* Left border — gold for reasoning, blue for thinking */}
+          {/* Left border accent */}
           {expanded && (
             <div
-              className="absolute bottom-0 left-0 top-0 w-[2px]"
+              className="absolute bottom-0 left-0 top-0"
               style={{
-                background: viewMode === "thinking" ? "#60a5fa" : "var(--iris-accent)",
-                opacity: 0.5,
+                width: 1,
+                background: "var(--iris-border)",
+                opacity: 0.6,
               }}
             />
           )}
 
           <div
             ref={scrollRef}
-            className={`px-5 pb-3 ${expanded ? "overflow-y-auto" : "overflow-hidden"}`}
+            className={`px-3 pb-2 ${expanded ? "overflow-y-auto" : "overflow-hidden"}`}
             style={{
-              maxHeight: expanded ? "calc(40vh - 44px)" : 52,
+              maxHeight: expanded ? "calc(40vh - 36px)" : 36,
             }}
           >
             <pre
-              className="whitespace-pre-wrap font-mono text-xs leading-relaxed"
+              className="whitespace-pre-wrap font-mono"
               style={{
-                color: viewMode === "thinking" && expanded
-                  ? "#93c5fd"
-                  : "var(--iris-text-secondary)",
+                fontSize: 11,
+                lineHeight: 1.5,
+                color: "var(--iris-text-secondary)",
               }}
             >
               {expanded ? activeText : previewLines}
@@ -146,8 +120,9 @@ export function AIReasoningArea() {
           {/* Fade-out gradient when collapsed */}
           {!expanded && (
             <div
-              className="pointer-events-none absolute inset-x-0 bottom-0 h-8"
+              className="pointer-events-none absolute inset-x-0 bottom-0"
               style={{
+                height: 16,
                 background:
                   "linear-gradient(to top, var(--iris-bg) 0%, transparent 100%)",
               }}

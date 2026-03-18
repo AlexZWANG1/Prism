@@ -58,19 +58,6 @@ body {
   position: relative;
 }
 
-/* Thin noise texture overlay */
-body::before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  z-index: 9999;
-  pointer-events: none;
-  opacity: 0.025;
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
-  background-repeat: repeat;
-  background-size: 256px 256px;
-}
-
 /* ─── Custom Scrollbar ─── */
 ::-webkit-scrollbar {
   width: 4px;
@@ -97,11 +84,6 @@ body::before {
 }
 
 /* ─── Animations ─── */
-@keyframes pulse-dot {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.3; }
-}
-
 @keyframes shimmer {
   0% { background-position: -200% 0; }
   100% { background-position: 200% 0; }
@@ -110,21 +92,6 @@ body::before {
 @keyframes fade-in {
   from { opacity: 0; }
   to { opacity: 1; }
-}
-
-@keyframes slide-up {
-  from {
-    opacity: 0;
-    transform: translateY(12px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.pulse-dot {
-  animation: pulse-dot 1.5s ease-in-out infinite;
 }
 
 .shimmer {
@@ -140,30 +107,6 @@ body::before {
 
 .fade-in {
   animation: fade-in 0.3s ease-out forwards;
-}
-
-.slide-up {
-  animation: slide-up 0.4s ease-out forwards;
-}
-
-/* ─── Glass Card ─── */
-.glass-card {
-  background: rgba(14, 16, 23, 0.7);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid var(--iris-border);
-  border-radius: 12px;
-  box-shadow:
-    0 0 0 1px rgba(201, 168, 76, 0.04),
-    0 4px 24px rgba(0, 0, 0, 0.3);
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
-}
-
-.glass-card:hover {
-  border-color: var(--iris-border-active);
-  box-shadow:
-    0 0 0 1px rgba(201, 168, 76, 0.08),
-    0 8px 32px rgba(0, 0, 0, 0.4);
 }
 
 /* ─── Table Zebra Striping ─── */
@@ -195,7 +138,7 @@ th {
 }
 
 th, td {
-  padding: 0.625rem 0.875rem;
+  padding: 0.375rem 0.625rem;
   border-bottom: 1px solid var(--iris-border);
 }
 
@@ -204,6 +147,10 @@ th, td {
   font-family: "JetBrains Mono", "Consolas", monospace;
   font-variant-numeric: tabular-nums;
 }
+
+/* ─── Terminal-dense spacing ─── */
+.term-row { padding: 2px 8px; }
+.term-cell { padding: 4px 8px; }
 
 /* ─── Timeline Connector ─── */
 .timeline-connector {
@@ -255,7 +202,7 @@ th, td {
 .prose-iris pre {
   background: var(--iris-surface);
   border: 1px solid var(--iris-border);
-  border-radius: 8px;
+  border-radius: 2px;
   padding: 1em;
   overflow-x: auto;
 }

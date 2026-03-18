@@ -15,9 +15,8 @@ export function StreamingTimeline() {
 
   if (timeline.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-16 text-center">
-        <div className="mb-3 h-8 w-8 animate-spin rounded-full border-2 border-[var(--iris-accent)] border-t-transparent" />
-        <p className="text-sm text-[var(--iris-text-muted)]">
+      <div className="flex items-center justify-center py-4">
+        <p style={{ fontSize: 11, color: "var(--iris-text-muted)" }}>
           正在初始化分析...
         </p>
       </div>
@@ -26,13 +25,14 @@ export function StreamingTimeline() {
 
   return (
     <div className="relative">
-      {/* Vertical gold thread line */}
+      {/* Vertical connector line */}
       <div
-        className="absolute bottom-0 left-[7px] top-0 w-[2px]"
+        className="absolute bottom-0 left-[5px] top-0"
         style={{
+          width: 1,
           background:
-            "linear-gradient(to bottom, var(--iris-accent) 0%, var(--iris-border) 100%)",
-          opacity: 0.4,
+            "linear-gradient(to bottom, var(--iris-border) 0%, var(--iris-border) 100%)",
+          opacity: 0.5,
         }}
       />
 
@@ -47,15 +47,16 @@ export function StreamingTimeline() {
         ))}
       </div>
 
-      {/* Shimmer at bottom when RUNNING */}
+      {/* Subtle pulse at bottom when RUNNING */}
       {pageState === "RUNNING" && (
-        <div className="relative ml-[7px] h-6 overflow-hidden">
+        <div className="relative ml-[5px] h-3 overflow-hidden">
           <div
-            className="absolute left-0 h-full w-[2px] animate-pulse"
+            className="absolute left-0 h-full animate-pulse"
             style={{
+              width: 1,
               background:
-                "linear-gradient(to bottom, var(--iris-accent), transparent)",
-              opacity: 0.6,
+                "linear-gradient(to bottom, var(--iris-border), transparent)",
+              opacity: 0.4,
             }}
           />
         </div>

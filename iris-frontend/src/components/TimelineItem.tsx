@@ -15,73 +15,105 @@ const phaseColorMap: Record<string, string> = {
   finalize: "var(--iris-phase-finalize)",
 };
 
+const TOOL_LABELS: Record<string, string> = {
+  recall_memory: "回忆历史",
+  fmp_get_financials: "拉取财报",
+  yf_quote: "获取报价",
+  yf_history: "历史行情",
+  build_dcf: "构建DCF",
+  get_comps: "可比分析",
+  exa_search: "搜索资讯",
+  web_fetch: "抓取网页",
+  extract_observation: "提取观察",
+  create_hypothesis: "形成假设",
+  add_evidence_card: "添加证据",
+  save_memory: "保存记忆",
+  memory_search: "搜索记忆",
+  query_knowledge: "查询知识",
+  check_calibration: "校准检查",
+  fred_get_macro: "宏观数据",
+};
+
 export function TimelineItem({ event, isLast }: TimelineItemProps) {
   const dotColor = phaseColorMap[event.phase] || "var(--iris-text-muted)";
   const isRunning = event.status === "running";
   const isError = event.status === "error";
 
+  const toolLabel =
+    event.tool && event.tool !== "system" && event.tool !== "analysis_complete"
+      ? TOOL_LABELS[event.tool] || event.tool
+      : null;
+  const showRawName =
+    toolLabel && TOOL_LABELS[event.tool!] ? event.tool : null;
+
   return (
     <div
-      className="group relative flex items-start gap-3 rounded-md px-1 py-1 transition-colors hover:bg-[var(--iris-surface-hover)]"
-      style={{ minHeight: 32 }}
+      className="group relative flex items-start gap-2 px-1"
+      style={{ minHeight: 24, paddingTop: 2, paddingBottom: 2 }}
     >
-      {/* Dot on the gold thread line */}
-      <div className="relative z-10 mt-1.5 flex w-[16px] flex-shrink-0 items-center justify-center">
+      {/* Dot on the connector line - 6px */}
+      <div className="relative z-10 flex w-[11px] flex-shrink-0 items-center justify-center" style={{ marginTop: 5 }}>
         {isError ? (
-          /* Error: red dot with X */
-          <div className="flex h-[8px] w-[8px] items-center justify-center rounded-full bg-[var(--iris-bearish)]">
-            <svg
-              width={6}
-              height={6}
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="var(--iris-bg)"
-              strokeWidth={4}
-              strokeLinecap="round"
-            >
-              <path d="M6 6l12 12M18 6L6 18" />
-            </svg>
-          </div>
+          <div
+            className="rounded-full"
+            style={{
+              width: 6,
+              height: 6,
+              background: "var(--iris-bearish)",
+            }}
+          />
         ) : isRunning ? (
-          /* Running: pulsing dot with ring */
           <div className="relative flex items-center justify-center">
             <div
-              className="absolute h-[14px] w-[14px] animate-ping rounded-full opacity-25"
-              style={{ background: dotColor }}
+              className="absolute animate-ping rounded-full opacity-25"
+              style={{ width: 10, height: 10, background: dotColor }}
             />
             <div
-              className="h-[8px] w-[8px] rounded-full"
-              style={{
-                background: dotColor,
-                boxShadow: `0 0 6px ${dotColor}`,
-              }}
+              className="rounded-full"
+              style={{ width: 6, height: 6, background: dotColor }}
             />
           </div>
         ) : (
-          /* Complete: solid dot */
           <div
-            className="h-[8px] w-[8px] rounded-full"
-            style={{ background: dotColor }}
+            className="rounded-full"
+            style={{ width: 6, height: 6, background: dotColor }}
           />
         )}
       </div>
 
       {/* Content */}
-      <div className="flex min-w-0 flex-1 items-center gap-2 py-0.5">
-        {/* Tool name in teal */}
-        {event.tool && event.tool !== "system" && event.tool !== "analysis_complete" && (
-          <span
-            className="flex-shrink-0 text-xs font-medium"
-            style={{ color: "var(--iris-data)" }}
-          >
-            {event.tool}
+      <div className="flex min-w-0 flex-1 items-center gap-1.5" style={{ paddingTop: 1, paddingBottom: 1 }}>
+        {/* Tool label in teal + raw name as secondary */}
+        {toolLabel && (
+          <span className="flex flex-shrink-0 items-center gap-1">
+            <span
+              style={{
+                fontSize: 12,
+                fontWeight: 500,
+                color: "var(--iris-data)",
+              }}
+            >
+              {toolLabel}
+            </span>
+            {showRawName && (
+              <span
+                style={{
+                  fontSize: 9,
+                  color: "var(--iris-text-muted)",
+                  opacity: 0.6,
+                }}
+              >
+                {showRawName}
+              </span>
+            )}
           </span>
         )}
 
         {/* Message text */}
         <span
-          className="min-w-0 flex-1 truncate text-xs"
+          className="min-w-0 flex-1 truncate"
           style={{
+            fontSize: 11,
             color: isError
               ? "var(--iris-bearish)"
               : "var(--iris-text-secondary)",
@@ -93,11 +125,10 @@ export function TimelineItem({ event, isLast }: TimelineItemProps) {
         {/* Duration badge */}
         {event.duration != null && (
           <span
-            className="flex-shrink-0 rounded-full px-1.5 py-px text-[10px] font-medium"
+            className="flex-shrink-0 font-mono"
             style={{
-              background: "var(--iris-surface)",
+              fontSize: 9,
               color: "var(--iris-text-muted)",
-              border: "1px solid var(--iris-border)",
             }}
           >
             {formatDuration(event.duration)}
@@ -106,8 +137,8 @@ export function TimelineItem({ event, isLast }: TimelineItemProps) {
 
         {/* Timestamp */}
         <span
-          className="flex-shrink-0 font-mono text-[10px]"
-          style={{ color: "var(--iris-text-muted)" }}
+          className="flex-shrink-0 font-mono"
+          style={{ fontSize: 9, color: "var(--iris-text-muted)", opacity: 0.7 }}
         >
           {formatTime(event.timestamp)}
         </span>

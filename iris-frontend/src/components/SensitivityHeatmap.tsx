@@ -14,12 +14,12 @@ function getCellStyle(
   value: number,
   baseValue: number,
   isBase: boolean
-): { bg: string; text: string; ring?: string } {
+): { bg: string; text: string; border?: string } {
   if (isBase) {
     return {
       bg: "rgba(201,168,76,0.12)",
       text: "var(--iris-text)",
-      ring: "2px solid var(--iris-accent)",
+      border: "1px solid var(--iris-accent)",
     };
   }
 
@@ -52,26 +52,26 @@ export function SensitivityHeatmap({
   data.forEach((cell) => cellMap.set(`${cell.row}-${cell.col}`, cell));
 
   return (
-    <div className="overflow-hidden rounded-lg border border-[var(--iris-border)]">
-      <div className="border-b border-[var(--iris-border)] bg-[var(--iris-surface)] px-5 py-3">
-        <h3 className="text-sm font-semibold text-[var(--iris-accent)]">
+    <div className="overflow-hidden border border-[var(--iris-border)]">
+      <div className="border-b border-[var(--iris-border)] bg-[var(--iris-surface)] px-3 py-1.5">
+        <h3 className="text-[11px] font-semibold uppercase tracking-wider text-[var(--iris-accent)]">
           Sensitivity Analysis
         </h3>
-        <p className="mt-0.5 text-[11px] text-[var(--iris-text-muted)]">
+        <p className="text-[10px] text-[var(--iris-text-muted)]">
           {rowLabel} vs {colLabel}
         </p>
       </div>
-      <div className="overflow-x-auto p-4">
+      <div className="overflow-x-auto p-2">
         <table className="w-full border-collapse">
           <thead>
             <tr>
-              <th className="px-3 py-2 text-left font-mono text-[10px] font-semibold uppercase tracking-wider text-[var(--iris-text-muted)]">
+              <th className="px-2 py-1 text-left font-mono text-[10px] font-semibold uppercase tracking-wider text-[var(--iris-text-muted)]">
                 {rowLabel} \ {colLabel}
               </th>
               {colValues.map((col) => (
                 <th
                   key={col}
-                  className="px-3 py-2 text-center font-mono text-[11px] font-medium text-[var(--iris-accent)]/70"
+                  className="px-2 py-1 text-center font-mono text-[10px] font-medium text-[var(--iris-accent)]/70"
                 >
                   {col}
                 </th>
@@ -81,7 +81,7 @@ export function SensitivityHeatmap({
           <tbody>
             {rowValues.map((row) => (
               <tr key={row}>
-                <td className="px-3 py-2 font-mono text-[11px] font-medium text-[var(--iris-accent)]/70">
+                <td className="px-2 py-1 font-mono text-[10px] font-medium text-[var(--iris-accent)]/70">
                   {row}
                 </td>
                 {colValues.map((col) => {
@@ -93,14 +93,12 @@ export function SensitivityHeatmap({
                   return (
                     <td
                       key={col}
-                      className="px-3 py-2 text-center font-mono text-xs transition-colors"
+                      className="px-2 py-1 text-center font-mono text-[11px]"
                       style={{
                         backgroundColor: style.bg,
                         color: style.text,
                         fontWeight: isBase ? 700 : 400,
-                        outline: style.ring || "none",
-                        outlineOffset: "-1px",
-                        borderRadius: isBase ? "4px" : undefined,
+                        border: style.border || "none",
                       }}
                     >
                       ${value.toFixed(0)}

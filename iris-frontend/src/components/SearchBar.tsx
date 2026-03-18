@@ -28,17 +28,19 @@ export function SearchBar() {
   );
 
   return (
-    <form onSubmit={handleSubmit} className="relative mx-auto w-full max-w-[640px]">
+    <form onSubmit={handleSubmit} className="relative w-full">
       <div
-        className="relative rounded-2xl border backdrop-blur-md transition-all duration-300 focus-within:shadow-[0_0_24px_rgba(201,168,76,0.12)]"
+        className="relative flex items-center border"
         style={{
-          backgroundColor: "rgba(14, 16, 23, 0.8)",
+          height: "36px",
+          borderRadius: "3px",
+          backgroundColor: "var(--iris-surface)",
           borderColor: "var(--iris-border)",
         }}
       >
         {/* Search icon */}
         <svg
-          className="absolute left-5 top-1/2 h-5 w-5 -translate-y-1/2 transition-colors duration-200"
+          className="ml-2.5 h-3.5 w-3.5 flex-shrink-0"
           style={{ color: "var(--iris-text-muted)" }}
           fill="none"
           viewBox="0 0 24 24"
@@ -57,10 +59,18 @@ export function SearchBar() {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="输入 ticker 或公司名称..."
-          className="w-full bg-transparent py-4 pl-14 pr-32 text-base outline-none placeholder:transition-colors"
+          className="h-full flex-1 bg-transparent px-2 text-[12px] outline-none"
           style={{
             color: "var(--iris-text)",
             caretColor: "var(--iris-accent)",
+          }}
+          onFocus={(e) => {
+            const container = e.currentTarget.parentElement;
+            if (container) container.style.borderColor = "var(--iris-accent)";
+          }}
+          onBlur={(e) => {
+            const container = e.currentTarget.parentElement;
+            if (container) container.style.borderColor = "var(--iris-border)";
           }}
           disabled={loading}
         />
@@ -68,37 +78,24 @@ export function SearchBar() {
         <button
           type="submit"
           disabled={!query.trim() || loading}
-          className="absolute right-3 top-1/2 -translate-y-1/2 rounded-xl px-6 py-2.5 text-sm font-semibold tracking-wide transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-30"
+          className="mr-1 flex-shrink-0 px-3 text-[11px] font-medium tracking-wide disabled:cursor-not-allowed disabled:opacity-30"
           style={{
+            height: "26px",
+            borderRadius: "2px",
             backgroundColor: "var(--iris-accent)",
-            color: "#ffffff",
-          }}
-          onMouseEnter={(e) => {
-            if (!e.currentTarget.disabled) {
-              e.currentTarget.style.backgroundColor = "var(--iris-accent-hover)";
-            }
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.backgroundColor = "var(--iris-accent)";
+            color: "#07080C",
           }}
         >
           {loading ? (
             <div
-              className="mx-auto h-4 w-4 animate-spin rounded-full border-2 border-t-transparent"
-              style={{ borderColor: "#ffffff", borderTopColor: "transparent" }}
+              className="mx-auto h-3 w-3 animate-spin rounded-full border border-t-transparent"
+              style={{ borderColor: "#07080C", borderTopColor: "transparent" }}
             />
           ) : (
             "分析"
           )}
         </button>
       </div>
-
-      {/* Focus-state gold border overlay via CSS */}
-      <style jsx>{`
-        form:focus-within .relative {
-          border-color: var(--iris-accent) !important;
-        }
-      `}</style>
     </form>
   );
 }

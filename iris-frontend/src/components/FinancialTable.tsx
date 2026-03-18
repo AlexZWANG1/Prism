@@ -6,28 +6,38 @@ interface FinancialTableProps {
   table: FinancialTableData;
 }
 
+function isNegativeValue(val: string | number): boolean {
+  if (typeof val === "number") return val < 0;
+  if (typeof val === "string") {
+    const cleaned = val.replace(/[,$%\s]/g, "");
+    if (cleaned.startsWith("(") && cleaned.endsWith(")")) return true;
+    return parseFloat(cleaned) < 0;
+  }
+  return false;
+}
+
 export function FinancialTable({ table }: FinancialTableProps) {
   return (
-    <div className="overflow-hidden rounded-lg border border-[var(--iris-border)]">
+    <div className="overflow-hidden border border-[var(--iris-border)]">
       {/* Title bar */}
-      <div className="border-b border-[var(--iris-border)] bg-[var(--iris-surface)] px-5 py-3">
-        <h3 className="text-sm font-semibold text-[var(--iris-accent)]">
+      <div className="border-b border-[var(--iris-border)] bg-[var(--iris-surface)] px-3 py-1.5">
+        <h3 className="text-[11px] font-semibold uppercase tracking-wider text-[var(--iris-accent)]">
           {table.title}
         </h3>
       </div>
 
       {/* Scrollable table area */}
       <div className="overflow-x-auto">
-        <table className="w-full text-sm">
+        <table className="w-full text-[12px]">
           <thead>
             <tr className="border-b border-[var(--iris-border)] bg-[var(--iris-surface)]">
-              <th className="sticky left-0 bg-[var(--iris-surface)] px-5 py-2.5 text-left text-[11px] font-semibold uppercase tracking-widest text-[var(--iris-accent)]">
+              <th className="sticky left-0 bg-[var(--iris-surface)] px-3 py-1.5 text-left text-[10px] font-semibold uppercase tracking-widest text-[var(--iris-accent)]">
                 {table.headers[0] || ""}
               </th>
               {table.headers.slice(1).map((header) => (
                 <th
                   key={header}
-                  className="px-4 py-2.5 text-right text-[11px] font-semibold uppercase tracking-widest text-[var(--iris-accent)]"
+                  className="px-3 py-1.5 text-right text-[10px] font-semibold uppercase tracking-widest text-[var(--iris-accent)]"
                 >
                   {header}
                 </th>
@@ -46,21 +56,20 @@ export function FinancialTable({ table }: FinancialTableProps) {
               return (
                 <tr
                   key={idx}
-                  className={`border-b border-[var(--iris-border)]/50 last:border-0 transition-colors ${rowBg} ${
-                    !row.isHeader ? "hover:bg-[var(--iris-surface-hover)]" : ""
-                  }`}
+                  className={`border-b border-[var(--iris-border)]/50 last:border-0 ${rowBg}`}
+                  style={{ height: "28px" }}
                 >
                   <td
-                    className={`sticky left-0 px-5 py-2 ${
+                    className={`sticky left-0 px-3 py-1 ${
                       row.isHeader
-                        ? "bg-[var(--iris-surface)] text-xs font-semibold uppercase tracking-wider text-[var(--iris-text-muted)]"
+                        ? "bg-[var(--iris-surface)] text-[10px] font-semibold uppercase tracking-wider text-[var(--iris-text-muted)]"
                         : row.isBold
                           ? "font-semibold text-[var(--iris-text)]"
                           : "text-[var(--iris-text-secondary)]"
                     }`}
                     style={{
                       paddingLeft: row.indent
-                        ? `${20 + row.indent * 16}px`
+                        ? `${12 + row.indent * 14}px`
                         : undefined,
                       background: row.isHeader
                         ? undefined
@@ -71,20 +80,25 @@ export function FinancialTable({ table }: FinancialTableProps) {
                   >
                     {row.label}
                   </td>
-                  {row.values.map((val, vIdx) => (
-                    <td
-                      key={vIdx}
-                      className={`px-4 py-2 text-right font-mono ${
-                        row.isHeader
-                          ? "text-xs font-semibold text-[var(--iris-text-muted)]"
-                          : row.isBold
-                            ? "font-semibold text-[var(--iris-text)]"
-                            : "text-[var(--iris-text-secondary)]"
-                      }`}
-                    >
-                      {val}
-                    </td>
-                  ))}
+                  {row.values.map((val, vIdx) => {
+                    const negative = isNegativeValue(val);
+                    return (
+                      <td
+                        key={vIdx}
+                        className={`px-3 py-1 text-right font-mono ${
+                          row.isHeader
+                            ? "text-[10px] font-semibold text-[var(--iris-text-muted)]"
+                            : negative
+                              ? "text-[#EF4444]"
+                              : row.isBold
+                                ? "font-semibold text-[var(--iris-text)]"
+                                : "text-[var(--iris-text-secondary)]"
+                        }`}
+                      >
+                        {val}
+                      </td>
+                    );
+                  })}
                 </tr>
               );
             })}
