@@ -503,6 +503,7 @@ class Harness:
                 "tool": tc.name,
                 "status": result.status,
                 "tags": result.tags,
+                "result": result.data if result.status == "ok" else None,
             },
         )
 
@@ -564,9 +565,9 @@ class Harness:
 
             if signals["has_observation"] and tool.name == "add_evidence_card":
                 score += 1.2
-            if signals["has_hypothesis"] and tool.name in {"add_evidence_card", "run_valuation", "compute_trade_score"}:
+            if signals["has_hypothesis"] and tool.name in {"add_evidence_card", "run_valuation", "compute_trade_score", "build_dcf", "get_comps"}:
                 score += 1.5
-            if signals["has_valuation"] and tool.name == "compute_trade_score":
+            if signals["has_valuation"] and tool.name in {"compute_trade_score", "get_comps"}:
                 score += 1.5
             if signals["has_trade_score"] and tool.name == "write_audit_trail":
                 score += 1.5
