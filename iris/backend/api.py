@@ -173,12 +173,13 @@ async def start_analysis(req: AnalyzeRequest):
             # Save valuation record if build_dcf was called
             if session.pending_valuation and ticker:
                 pv = session.pending_valuation
-                if pv.get("fair_value") is not None:
+                fv = pv.get("fair_value") or pv.get("fair_value_per_share")
+                if fv is not None:
                     retriever.save_valuation_record(
                         ticker=ticker,
-                        fair_value=pv["fair_value"],
-                        current_price=pv["current_price"],
-                        gap_pct=pv["gap_pct"],
+                        fair_value=fv,
+                        current_price=pv.get("current_price", 0),
+                        gap_pct=pv.get("gap_pct", 0),
                         run_id=session.id,
                     )
 
