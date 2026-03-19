@@ -16,7 +16,11 @@ export function WatchlistRow({ item }: WatchlistRowProps) {
     <tr
       className="cursor-pointer"
       onClick={() => {
-        window.location.href = `/analysis?query=${encodeURIComponent(item.ticker)}`;
+        if (item.latest_run_id) {
+          window.location.href = `/analysis/${item.latest_run_id}`;
+        } else {
+          window.location.href = `/analysis?query=${encodeURIComponent(item.ticker)}`;
+        }
       }}
     >
       {/* Ticker */}
@@ -24,12 +28,12 @@ export function WatchlistRow({ item }: WatchlistRowProps) {
         {item.ticker}
       </td>
 
-      {/* Thesis / Company name */}
+      {/* Company name */}
       <td
         className="max-w-[200px] truncate text-[11px]"
         style={{ color: "var(--iris-text-muted)" }}
       >
-        {item.thesis ?? "—"}
+        {item.name ?? "—"}
       </td>
 
       {/* Market Price */}
@@ -56,20 +60,9 @@ export function WatchlistRow({ item }: WatchlistRowProps) {
         {item.fair_value != null ? formatCurrency(item.fair_value) : "—"}
       </td>
 
-      {/* Alerts */}
-      <td className="text-right text-[11px]">
-        {item.alerts.length > 0 ? (
-          <span
-            className="font-data"
-            style={{
-              color: item.alerts.some((a) => a.type === "critical") ? "#EF4444" : "#FBBF24",
-            }}
-          >
-            {item.alerts.length}
-          </span>
-        ) : (
-          <span style={{ color: "var(--iris-text-muted)" }}>0</span>
-        )}
+      {/* Recommendation */}
+      <td className="text-right text-[11px]" style={{ color: "var(--iris-text-secondary)" }}>
+        {item.recommendation ?? "—"}
       </td>
     </tr>
   );

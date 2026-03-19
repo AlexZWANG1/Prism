@@ -4,7 +4,7 @@ export type Phase = "gather" | "analyze" | "evaluate" | "finalize";
 
 export type ActiveTab = "data" | "model" | "comps" | "memory";
 
-export type EventColor = "green" | "blue" | "amber" | "gray" | "purple";
+export type EventColor = "green" | "blue" | "amber" | "gray" | "purple" | "gold";
 
 export interface TimelineEvent {
   id: string;
@@ -15,6 +15,7 @@ export interface TimelineEvent {
   color: EventColor;
   duration?: number;
   status: "running" | "complete" | "error";
+  fullText?: string;
 }
 
 export interface PendingQuestion {
@@ -137,9 +138,49 @@ export interface WatchlistAlert {
 
 export interface WatchlistItem {
   ticker: string;
+  name: string | null;
   fair_value: number | null;
   market_price: number | null;
   gap: number | null;
   thesis: string | null;
+  recommendation: string | null;
+  latest_run_id: string | null;
   alerts: WatchlistAlert[];
+}
+
+export interface AnalysisSnapshot {
+  id: string;
+  query: string;
+  ticker: string | null;
+  status: string;
+  created_at: string;
+  reasoning_text: string;
+  thinking_text: string;
+  timeline: TimelineEvent[];
+  panels: {
+    data: DataPanelState;
+    model: ModelPanelState;
+    comps: CompsPanelState;
+    memory: MemoryPanelState;
+  };
+  tokens_in: number;
+  tokens_out: number;
+}
+
+export interface HistoryItem {
+  id: string;
+  query: string;
+  ticker: string | null;
+  status: string;
+  created_at: string;
+  recommendation: string | null;
+  tokens_in: number;
+  tokens_out: number;
+}
+
+export interface HistoryListResponse {
+  items: HistoryItem[];
+  total: number;
+  limit: number;
+  offset: number;
 }

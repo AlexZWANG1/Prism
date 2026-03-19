@@ -4,7 +4,7 @@ import type {
   SteeringRequest,
   InputResponseRequest,
 } from "@/types/api";
-import type { WatchlistItem } from "@/types/analysis";
+import type { WatchlistItem, HistoryListResponse, AnalysisSnapshot } from "@/types/analysis";
 import type { MemoryTree, MemoryFileContent } from "@/types/memory";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "";
@@ -109,4 +109,27 @@ export async function deleteMemoryFile(
 
 export function createAnalysisEventSource(analysisId: string): EventSource {
   return new EventSource(`${BASE_URL}/api/analyze/${analysisId}/stream`);
+}
+
+export async function getHistory(
+  ticker?: string, limit = 30, offset = 0
+): Promise<HistoryListResponse> {
+  const params = new URLSearchParams();
+  if (ticker) params.set("ticker", ticker);
+  params.set("limit", String(limit));
+  params.set("offset", String(offset));
+  return request<HistoryListResponse>(`/api/history?${params}`);
+}
+
+export async function getHistoryDetail(runId: string): Promise<AnalysisSnapshot> {
+  return request<AnalysisSnapshot>(`/api/history/${encodeURIComponent(runId)}`);
+}
+
+export async function probeSession(analysisId: string): Promise<boolean> {
+  try {
+    const res = await fetch(`${BASE_URL}/api/analyze/${analysisId}/status`);
+    return res.status === 200;
+  } catch {
+    return false;
+  }
 }
