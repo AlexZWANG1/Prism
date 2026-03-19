@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 from tools.memory import (
     recall_memory, save_memory, check_calibration,
-    _memory_base, _extract_fair_value,
+    _memory_base,
 )
 
 
@@ -62,17 +62,17 @@ def test_save_overwrites(memory_dir):
 
 
 def test_save_company_appends_calibration(memory_dir):
+    """Calibration now reads fair_value from DB, not regex.
+    Without a DB valuation record, no calibration entry is created."""
     content = "# NVDA\nFair Value: $165.50\nBuy recommendation."
     with patch("tools.memory._memory_base", return_value=memory_dir):
         save_memory(company="NVDA", memory_type="company", content=content)
     log_path = memory_dir / "calibration" / "prediction_log.jsonl"
-    assert log_path.exists()
-    lines = log_path.read_text(encoding="utf-8").strip().splitlines()
-    assert len(lines) == 1
-    entry = json.loads(lines[0])
-    assert entry["company"] == "NVDA"
-    assert entry["predicted"] == 165.50
-    assert entry["actual"] is None
+    # No calibration entry since no DB valuation exists
+    if log_path.exists():
+        lines = log_path.read_text(encoding="utf-8").strip().splitlines()
+        assert len(lines) == 0 or lines == [""]
+    # This is correct behavior: no valuation in DB = no calibration entry
 
 
 def test_check_calibration_empty(memory_dir):
@@ -156,11 +156,10 @@ def test_recall_calibration_type(memory_dir):
     assert len(result.data["content"]) == 1
 
 
-def test_extract_fair_value_patterns():
-    assert _extract_fair_value("Fair Value: $165.50") == 165.50
-    assert _extract_fair_value("公允价值: $1,234") == 1234.0
-    assert _extract_fair_value("fair_value: 200") == 200.0
-    assert _extract_fair_value("No value here") is None
+def test_regex_extraction_removed():
+    """_extract_fair_value was deleted — calibration now uses DB."""
+    import tools.memory as mem
+    assert not hasattr(mem, "_extract_fair_value")
 
 
 def test_cannot_save_calibration_directly(memory_dir):
