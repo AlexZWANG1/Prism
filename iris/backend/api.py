@@ -128,6 +128,7 @@ async def start_analysis(req: AnalyzeRequest):
         if sse is not None:
             session.events.put(sse)
             session.touch()
+        session.accumulate_raw(event)  # raw event, not truncated
 
     harness.on_event = on_event
 
