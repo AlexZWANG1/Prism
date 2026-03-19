@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS analysis_runs (
     thinking_text TEXT,
     timeline_json TEXT,           -- JSON array of timeline events
     panels_json TEXT,             -- JSON object {data, model, comps, memory}
+    recommendation TEXT,          -- WATCH/CANDIDATE/HIGH_CONVICTION/etc, nullable
     tokens_in INTEGER DEFAULT 0,
     tokens_out INTEGER DEFAULT 0
 );
@@ -69,12 +70,61 @@ The `ALTER TABLE` calls should be wrapped in try/except to handle the case where
 
 These tables already exist in `retrieval.py` with full CRUD methods. Changes needed:
 
-- **`build_dcf`** → calls `retriever.save_valuation(valuation, id, ticker=ticker)` after computing results. The `save_valuation()` method signature gains an optional `ticker` parameter.
-- **`create_hypothesis`** → already calls `retriever.save_hypothesis()` (confirmed in `iris/skills/hypothesis/tools.py:172,232`). No change needed — this is NOT dead code.
-- **`add_evidence_card`** → already updates hypothesis evidence_log in `iris/skills/hypothesis/tools.py`. No change needed.
-- **Analysis completion** → calls `retriever.save_audit_trail()` to capture full audit
+#### Issue 1: `build_dcf` → `save_valuation` type mismatch
 
-**Note:** `save_valuation()` and `save_trade_score()` method signatures must be updated to accept and persist the `ticker` parameter.
+`build_dcf` (iris/skills/dcf/tools.py:114) is a **pure function** — it takes `assumptions: dict` and returns `ToolResult.ok(dict)`. It has no `retriever` parameter and no access to the DB. Its return dict has fields like `fair_value_per_share`, `gap_pct`, `year_by_year` — which do NOT match the `ValuationOutput` Pydantic model (which has `fair_value_range`, `valuation_gap`, `key_assumptions`, etc.).
+
+**Fix:** Do NOT modify `build_dcf` itself. Instead, persist valuation data at the **session accumulator level** in `api.py`'s `on_event`. When a `tool_end` event for `build_dcf` arrives, the accumulator extracts the structured result and writes a lightweight valuation record:
+
+```python
+# In session.accumulate() — when tool == "build_dcf" and status == "ok":
+retriever.save_valuation_record(
+    ticker=result["ticker"],           # from assumptions passed through
+    fair_value=result["fair_value_per_share"],
+    current_price=result["current_price"],
+    gap_pct=result["gap_pct"],
+    run_id=session.id,
+)
+```
+
+This requires a **new** `save_valuation_record()` method on `SQLiteRetriever` that writes directly to the `valuations` table with the new `ticker` column, WITHOUT requiring a `ValuationOutput` Pydantic model. The existing `save_valuation()` / `ValuationOutput` pattern is over-engineered for what we need — a simple `(id, ticker, fair_value, data_json)` row suffices.
+
+Similarly, the `register()` function in `iris/skills/dcf/tools.py:495` must pass `context["retriever"]` to the tool — but since we're handling this at the accumulator level, no change to `register()` is needed.
+
+#### Issue 2: `trade_scores` — recommendation data link is broken
+
+`trade_scores` has `save_trade_score()` (retrieval.py:182) but **nothing calls it**. The `TradeScore` model requires `hypothesis_id`, `raw_score`, `constrained_score`, `recommendation`, etc. — these are produced by a `generate_trade_signal` flow that doesn't exist yet.
+
+**Fix for this iteration:** Do NOT try to wire up `trade_scores` now. Instead, add a `recommendation` column directly to `analysis_runs`:
+
+```sql
+ALTER TABLE analysis_runs ADD COLUMN recommendation TEXT;  -- WATCH/CANDIDATE/etc, nullable
+```
+
+The recommendation is extracted from the AI's reasoning text at analysis completion. Specifically, the harness result's `reply` text is parsed by a simple heuristic in the accumulator (look for explicit recommendation keywords in the final output, or default to NULL). This is NOT regex on markdown files — it's parsing the AI's own structured conclusion which follows the soul's output format.
+
+Watchlist reads `recommendation` from `analysis_runs` instead of `trade_scores`. The `trade_scores` table activation is deferred to a future iteration when the full trade signal pipeline is built.
+
+#### Issue 3: `save_audit_trail` cannot be populated from current completion data
+
+`AuditTrail` (schemas.py:149) requires 15+ fields including `documents_used`, `observations_extracted`, `evidence_supporting`, `evidence_refuting`, `belief_trajectory`, `raw_trade_score`, `constrained_trade_score`, etc. The harness completion callback (api.py:145) only has `reply`, `error`, `tokens`, `tool_log`.
+
+**Fix:** Defer `audit_trails` activation. The `analysis_runs` table already captures everything needed for history/replay. `audit_trails` is a richer analytical structure that requires the full hypothesis/evidence/trade-score pipeline to be wired first. Trying to fill it with placeholder data defeats the purpose.
+
+Remove `save_audit_trail()` from the completion flow. Add it back when the hypothesis → evidence → trade score pipeline is fully connected in a future iteration.
+
+#### Summary of what actually gets activated this iteration:
+
+| Table | Status | Rationale |
+|-------|--------|-----------|
+| `analysis_runs` | **NEW — fully wired** | Core persistence, enables history + replay |
+| `valuations` | **Activated (simplified)** | New `save_valuation_record()` writes fair_value from build_dcf results at accumulator level |
+| `hypotheses` | **Already active** | `create_hypothesis` already calls `save_hypothesis()` |
+| `trade_scores` | **Deferred** | No caller exists; recommendation goes in analysis_runs instead |
+| `audit_trails` | **Deferred** | Required fields cannot be populated from current completion data |
+
+- **`create_hypothesis`** → already calls `retriever.save_hypothesis()` (confirmed in `iris/skills/hypothesis/tools.py:172,232`). No change needed.
+- **`add_evidence_card`** → already updates hypothesis evidence_log in `iris/skills/hypothesis/tools.py`. No change needed.
 
 ### Data Flow (After)
 
@@ -82,16 +132,20 @@ These tables already exist in `retrieval.py` with full CRUD methods. Changes nee
 User submits query
   → POST /api/analyze → session created → SSE stream starts
   │
-  ├─ Each tool call → SSE push to frontend + session.accumulate() on backend
+  │  on_event callback fires for every HarnessEvent:
+  │    ├─ SSE path: harness_event_to_sse() → truncated → browser queue
+  │    └─ Accumulator path: session.accumulate_raw(event) → full data
+  │
+  ├─ Each tool call → SSE push + accumulator captures full result
   ├─ <thinking> blocks → SSE push + accumulated as timeline thinking entries
-  ├─ build_dcf() → SSE push + retriever.save_valuation()
-  ├─ create_hypothesis() → SSE push + retriever.save_hypothesis()
+  ├─ build_dcf() → SSE push + accumulator extracts fair_value
+  │                          → retriever.save_valuation_record(ticker, fair_value, ...)
+  ├─ create_hypothesis() → SSE push + retriever.save_hypothesis() (already wired)
   ├─ get_comps() → SSE push + accumulated in session
   ├─ save_memory() → writes md note (free text only, no regex extraction)
   │
   ▼ Analysis complete
-  ├─ retriever.save_audit_trail()
-  ├─ db.save_analysis_run() (full snapshot from session accumulator)
+  ├─ db.save_analysis_run() (full snapshot from session accumulator, untruncated)
   ├─ calibration entry (reads fair_value from valuations table, not regex)
   └─ SSE: analysis_complete → done
 ```
@@ -112,19 +166,29 @@ class AnalysisSession:
     accumulated_panels: dict = field(default_factory=dict)
 ```
 
-`sse_bridge.py`'s `harness_event_to_sse()` remains a pure function (event → dict). The accumulation happens in `api.py`'s `on_event` callback, which already has access to the session object:
+`sse_bridge.py`'s `harness_event_to_sse()` remains a pure function (event → dict). The accumulation happens in `api.py`'s `on_event` callback, which already has access to the session object.
+
+**Critical: Accumulator reads raw HarnessEvent, NOT the SSE-converted dict.**
+
+`sse_bridge.py` truncates `tool_end.result` to 10KB (sse_bridge.py:16, `_MAX_RESULT_SIZE`). If the accumulator consumed the SSE dict, panel data snapshots would be truncated — defeating the "full snapshot" design.
+
+**Fix:** The accumulator reads from the raw `HarnessEvent.data` (which has the full untruncated result), while the SSE queue gets the truncated version for browser delivery:
 
 ```python
 # In api.py start_analysis()
 def on_event(event: HarnessEvent) -> None:
+    # SSE path: truncated for browser
     sse = harness_event_to_sse(event)
     if sse is not None:
         session.events.put(sse)
-        session.accumulate(sse)  # NEW: server-side accumulation
         session.touch()
+    # Accumulator path: reads raw event with full data
+    session.accumulate_raw(event)  # NEW: uses HarnessEvent, not SSE dict
 ```
 
-This avoids changing `harness_event_to_sse()`'s pure function signature.
+`session.accumulate_raw(event)` processes the raw `HarnessEvent` — for `TOOL_END` events it reads the full `event.data["result"]` without truncation. For `TEXT_DELTA` events it accumulates reasoning/thinking text. For `TOOL_START` events it builds timeline entries.
+
+This avoids changing `harness_event_to_sse()`'s signature while ensuring the snapshot has complete data.
 
 ### API Changes
 
@@ -204,7 +268,7 @@ Returns full snapshot for replay. The response shape matches what `loadSnapshot(
 | fair_value | `valuations` table | Latest record for ticker |
 | gap | Computed | `(fair_value - market_price) / market_price` |
 | thesis | `hypotheses` table | Latest record's `thesis` field |
-| recommendation | `trade_scores` table | Latest record for ticker (uses new `ticker` column) |
+| recommendation | `analysis_runs` table | `recommendation` column from latest run for this ticker (trade_scores deferred) |
 | alerts | Computed from DB | Kill criteria from hypotheses + staleness from analysis_runs |
 | latest_run_id | `analysis_runs` table | Most recent run_id for this ticker (for click → replay) |
 
@@ -225,13 +289,32 @@ Returns full snapshot for replay. The response shape matches what `loadSnapshot(
 
 ### Analysis Page (`/analysis/[id]`) — Dual Mode
 
-**Mode detection:**
+**Mode detection — fetch-first, not SSE-first:**
+
+The original design proposed "try SSE, on 404 fallback to history." This is unreliable because `EventSource.onerror` does not expose HTTP status codes (iris-frontend/src/hooks/useAnalysisStream.ts:68) — you cannot distinguish 404 from a network error.
+
+**Fix:** Use a **fetch-first probe** before opening EventSource:
+
+```typescript
+// In useAnalysisStream or analysis page
+const probe = await fetch(`/api/analyze/${id}/stream`, { method: 'HEAD' });
+if (probe.status === 404) {
+  // No active session → load snapshot
+  const snapshot = await getHistoryDetail(id);
+  if (snapshot) {
+    loadSnapshot(snapshot);  // replay mode
+  } else {
+    // ID doesn't exist anywhere → show error
+  }
+} else {
+  // Active session exists → open EventSource for live streaming
+  connectSSE(id);
+}
 ```
-Enter /analysis/[id]
-  → Try SSE connection to /api/analyze/{id}/stream
-  → If 404 → fallback to GET /api/history/{id}
-  → Load snapshot into store, pageState = "COMPLETE"
-```
+
+This gives a clean HTTP status code from `fetch()` before committing to EventSource. The `/api/analyze/{id}/stream` endpoint already returns 404 when session is not found (api.py:185), so HEAD works naturally.
+
+Alternatively, add a dedicated lightweight endpoint `GET /api/analyze/{id}/status` that returns `{"exists": true, "status": "running"}` or 404. This avoids HEAD semantics issues with SSE endpoints.
 
 **Replay mode differences:**
 - Top banner: "历史回看 — {date} {query}"
@@ -300,10 +383,10 @@ If these IDs diverged, the dual-mode detection on the analysis page would break.
 - `iris/backend/sessions.py` — add accumulator fields to AnalysisSession
 - `iris/backend/sse_bridge.py` — no change needed (accumulation happens in api.py's on_event callback)
 - `iris/tools/memory.py` — delete `_extract_fair_value`, change calibration to read from DB
-- `iris/tools/retrieval.py` — add `analysis_runs` table to `_init_db`, add `ticker` column to `valuations` and `trade_scores` (ALTER TABLE with try/except for idempotency), add save/query methods for analysis_runs
-- `iris/skills/dcf/tools.py` — call `save_valuation()` after DCF computation (note: file is `tools.py` plural)
+- `iris/tools/retrieval.py` — add `analysis_runs` table to `_init_db`, add `ticker` column to `valuations` (ALTER TABLE with try/except for idempotency), add `save_valuation_record()` simplified method, add save/query methods for analysis_runs
+- `iris/skills/dcf/tools.py` — NO change (valuation persistence happens at accumulator level in api.py, not in tool)
 - `iris/skills/hypothesis/tools.py` — already calls `save_hypothesis()`, no change needed
-- `iris/core/harness.py` — call `save_audit_trail()` on run completion
+- `iris/core/harness.py` — NO change this iteration (audit_trails deferred)
 
 ### Frontend
 - `iris-frontend/src/app/page.tsx` — new layout with watchlist + history sections + refresh button
