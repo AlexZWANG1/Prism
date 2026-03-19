@@ -10,14 +10,13 @@ persistence via accumulate_raw().
 
 from __future__ import annotations
 
-import math
 import queue
 import threading
 import time
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Literal
+from typing import Literal
 
 from core.harness import EventType, Harness, HarnessEvent
 
