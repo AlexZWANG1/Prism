@@ -135,6 +135,8 @@ modes:
       - save_memory
       - recall_experiences
       - save_experience
+      - run_reflection
+      - distill_patterns
       - fmp_get_financials
       - yf_quote
       - check_calibration
