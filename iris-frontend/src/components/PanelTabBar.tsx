@@ -75,10 +75,10 @@ export function PanelTabBar() {
           <button
             key={tab.key}
             onClick={() => setActiveTab(tab.key)}
-            className={`relative px-[10px] py-[6px] font-mono text-[11px] font-medium cursor-pointer ${
+            className={`relative px-[10px] py-[6px] font-mono text-[12px] font-medium cursor-pointer ${
               isActive
                 ? "text-[var(--iris-accent)]"
-                : "text-[var(--iris-text-muted)] hover:text-[var(--iris-text-secondary)]"
+                : "text-[var(--iris-text-secondary)] hover:text-[var(--iris-text)]"
             }`}
           >
             {/* Label */}
@@ -86,7 +86,7 @@ export function PanelTabBar() {
 
             {/* Count badge - tiny inline */}
             {count > 0 && (
-              <span className="ml-1 font-mono text-[9px] opacity-60">
+              <span className="ml-1 font-mono text-[10px] opacity-60">
                 {count}
               </span>
             )}

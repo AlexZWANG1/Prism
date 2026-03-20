@@ -2,6 +2,33 @@
 
 import type { FinancialTableData } from "@/types/analysis";
 
+const METRIC_LABELS: Record<string, string> = {
+  // Cash Flow
+  operatingCashFlow: "Operating Cash Flow",
+  capitalExpenditure: "Capital Expenditure",
+  freeCashFlow: "Free Cash Flow",
+  dividendsPaid: "Dividends Paid",
+  // Income Statement
+  revenue: "Revenue",
+  grossProfit: "Gross Profit",
+  operatingIncome: "Operating Income",
+  netIncome: "Net Income",
+  eps: "EPS",
+  epsdiluted: "EPS (Diluted)",
+  // Balance Sheet
+  totalAssets: "Total Assets",
+  totalLiabilities: "Total Liabilities",
+  totalEquity: "Total Equity",
+  cashAndShortTermInvestments: "Cash & Short-Term Inv.",
+  totalDebt: "Total Debt",
+  // Ratios
+  grossProfitMargin: "Gross Margin",
+  operatingProfitMargin: "Operating Margin",
+  netProfitMargin: "Net Margin",
+  returnOnEquity: "Return on Equity",
+  debtEquityRatio: "Debt / Equity",
+};
+
 interface FinancialTableProps {
   table: FinancialTableData;
 }
@@ -28,16 +55,16 @@ export function FinancialTable({ table }: FinancialTableProps) {
 
       {/* Scrollable table area */}
       <div className="overflow-x-auto">
-        <table className="w-full text-[11px] border-collapse">
+        <table className="w-full text-[12px] border-collapse">
           <thead>
             <tr className="border-b border-[var(--iris-border)] bg-[var(--iris-surface)]">
-              <th className="sticky left-0 bg-[var(--iris-surface)] p-[3px_8px] text-left font-mono text-[11px] uppercase tracking-[0.08em] text-[var(--iris-accent)]">
+              <th className="sticky left-0 bg-[var(--iris-surface)] p-[3px_8px] text-left font-mono text-[12px] uppercase tracking-[0.08em] text-[var(--iris-accent)]">
                 {table.headers[0] || ""}
               </th>
               {table.headers.slice(1).map((header) => (
                 <th
                   key={header}
-                  className="p-[3px_8px] text-right font-mono text-[11px] uppercase tracking-[0.08em] text-[var(--iris-accent)]"
+                  className="p-[3px_8px] text-right font-mono text-[12px] uppercase tracking-[0.08em] text-[var(--iris-accent)]"
                 >
                   {header}
                 </th>
@@ -72,7 +99,7 @@ export function FinancialTable({ table }: FinancialTableProps) {
                         : "var(--iris-bg)",
                     }}
                   >
-                    {row.label}
+                    {METRIC_LABELS[row.label] || row.label}
                   </td>
                   {row.values.map((val, vIdx) => {
                     const negative = isNegativeValue(val);

@@ -40,14 +40,14 @@ export function AIReasoningArea() {
       <button
         onClick={() => setExpanded(!expanded)}
         className="flex w-full items-center gap-1 border-none bg-transparent text-left"
-        style={{ padding: "6px 10px" }}
+        style={{ padding: "8px 12px" }}
       >
         {/* Muted chevron */}
         <svg
           className="flex-shrink-0"
           style={{
-            width: 8,
-            height: 8,
+            width: 10,
+            height: 10,
             color: "var(--iris-text-muted)",
             transform: expanded ? "rotate(90deg)" : "rotate(0deg)",
             transition: "transform 150ms",
@@ -67,7 +67,7 @@ export function AIReasoningArea() {
         <span
           className="font-mono"
           style={{
-            fontSize: 10,
+            fontSize: 12,
             fontWeight: 600,
             color: "var(--iris-text-secondary)",
             letterSpacing: "0.06em",
@@ -80,7 +80,7 @@ export function AIReasoningArea() {
         {/* Line count */}
         <span
           style={{
-            fontSize: 8,
+            fontSize: 10,
             color: "var(--iris-text-muted)",
             fontWeight: 400,
           }}
@@ -120,7 +120,7 @@ export function AIReasoningArea() {
         <p
           className="truncate font-mono"
           style={{
-            fontSize: 9,
+            fontSize: 11,
             lineHeight: 1.5,
             color: "var(--iris-text-secondary)",
             margin: 0,

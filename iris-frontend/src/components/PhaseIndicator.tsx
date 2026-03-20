@@ -36,9 +36,9 @@ export function PhaseIndicator() {
                 <span
                   className="mx-0.5"
                   style={{
-                    fontSize: 10,
+                    fontSize: 11,
                     color: "var(--iris-text-muted)",
-                    opacity: 0.4,
+                    opacity: 0.6,
                   }}
                 >
                   ›
@@ -46,14 +46,14 @@ export function PhaseIndicator() {
               )}
               <span
                 style={{
-                  fontSize: 10,
+                  fontSize: 12,
                   fontWeight: 500,
                   color: isActive
                     ? "var(--iris-accent)"
                     : isPast
                       ? "var(--iris-text-secondary)"
                       : "var(--iris-text-muted)",
-                  opacity: isActive ? 1 : isPast ? 0.7 : 0.3,
+                  opacity: isActive ? 1 : isPast ? 0.7 : 0.5,
                 }}
               >
                 {phase.label}
@@ -68,7 +68,7 @@ export function PhaseIndicator() {
         {isComplete && (
           <span
             className="font-mono"
-            style={{ fontSize: 10, color: "var(--iris-data)", fontWeight: 500 }}
+            style={{ fontSize: 12, color: "var(--iris-data)", fontWeight: 500 }}
           >
             完成
           </span>
@@ -76,7 +76,7 @@ export function PhaseIndicator() {
         {pageState === "RUNNING" && (
           <span
             className="font-mono"
-            style={{ fontSize: 10, color: "var(--iris-accent)", fontWeight: 500 }}
+            style={{ fontSize: 12, color: "var(--iris-accent)", fontWeight: 500 }}
           >
             运行中
           </span>
@@ -84,7 +84,7 @@ export function PhaseIndicator() {
         {pageState === "WAITING" && (
           <span
             className="font-mono"
-            style={{ fontSize: 10, color: "var(--iris-accent)", fontWeight: 500 }}
+            style={{ fontSize: 12, color: "var(--iris-accent)", fontWeight: 500 }}
           >
             等待输入
           </span>

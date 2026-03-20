@@ -31,26 +31,26 @@ export function WatchlistRow({ item }: WatchlistRowProps) {
       onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = "transparent"; }}
     >
       {/* Ticker */}
-      <td className="font-mono text-[12px] font-bold py-0.5 px-1" style={{ color: "var(--iris-accent)" }}>
+      <td className="font-mono text-[12px] font-bold py-1.5 px-2" style={{ color: "var(--iris-accent)" }}>
         {item.ticker}
       </td>
 
       {/* Company name */}
       <td
-        className="font-mono max-w-[180px] truncate text-[11px] py-0.5 px-1"
+        className="font-mono max-w-[180px] truncate text-[12px] py-1.5 px-2"
         style={{ color: "var(--iris-text-muted)" }}
       >
         {item.name ?? "—"}
       </td>
 
       {/* Market Price */}
-      <td className="font-mono text-right text-[11px] py-0.5 px-1" style={{ color: "var(--iris-data)" }}>
+      <td className="font-mono text-right text-[12px] py-1.5 px-2" style={{ color: "var(--iris-data)" }}>
         {item.market_price != null ? formatCurrency(item.market_price) : "—"}
       </td>
 
       {/* Gap % */}
       <td
-        className="font-mono text-right text-[11px] font-bold py-0.5 px-1"
+        className="font-mono text-right text-[12px] font-bold py-1.5 px-2"
         style={{
           color: isPositiveGap
             ? "#22C55E"
@@ -63,17 +63,17 @@ export function WatchlistRow({ item }: WatchlistRowProps) {
       </td>
 
       {/* Fair Value */}
-      <td className="font-mono text-right text-[11px] py-0.5 px-1" style={{ color: fairValid ? "var(--iris-data)" : "var(--iris-text-muted)" }}>
+      <td className="font-mono text-right text-[12px] py-1.5 px-2" style={{ color: fairValid ? "var(--iris-data)" : "var(--iris-text-muted)" }}>
         {fairValid ? formatCurrency(item.fair_value!) : "N/A"}
       </td>
 
       {/* Recommendation */}
-      <td className="font-mono text-right text-[11px] uppercase py-0.5 px-1" style={{ color: "var(--iris-text-secondary)" }}>
+      <td className="font-mono text-right text-[12px] uppercase py-1.5 px-2" style={{ color: "var(--iris-text-secondary)" }}>
         {item.recommendation ?? "—"}
       </td>
 
       {/* Actions */}
-      <td className="text-right py-0.5 px-1">
+      <td className="text-right py-1.5 px-2">
         <button
           onClick={async (e) => {
             e.stopPropagation();
@@ -90,7 +90,7 @@ export function WatchlistRow({ item }: WatchlistRowProps) {
               setReflecting(false);
             }
           }}
-          className="font-mono px-1 py-px text-[11px] border transition-colors uppercase tracking-wider"
+          className="font-mono px-1 py-px text-[12px] border transition-colors uppercase tracking-wider"
           style={{
             color: "var(--iris-accent)",
             borderColor: "var(--iris-border)",

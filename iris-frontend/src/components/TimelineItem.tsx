@@ -61,8 +61,8 @@ export function TimelineItem({ event, isLast }: TimelineItemProps) {
         {isError ? (
           <div
             style={{
-              width: 5,
-              height: 5,
+              width: 6,
+              height: 6,
               borderRadius: "50%",
               background: "var(--iris-bearish)",
             }}
@@ -71,8 +71,8 @@ export function TimelineItem({ event, isLast }: TimelineItemProps) {
           <div
             className="animate-pulse"
             style={{
-              width: 5,
-              height: 5,
+              width: 6,
+              height: 6,
               borderRadius: "50%",
               background: dotColor,
             }}
@@ -80,8 +80,8 @@ export function TimelineItem({ event, isLast }: TimelineItemProps) {
         ) : (
           <div
             style={{
-              width: 5,
-              height: 5,
+              width: 6,
+              height: 6,
               borderRadius: "50%",
               background: dotColor,
             }}
@@ -111,7 +111,7 @@ export function TimelineItem({ event, isLast }: TimelineItemProps) {
             <span
               className="font-mono"
               style={{
-                fontSize: 10,
+                fontSize: 12,
                 fontWeight: 500,
                 color: "var(--iris-data)",
               }}
@@ -122,9 +122,9 @@ export function TimelineItem({ event, isLast }: TimelineItemProps) {
               <span
                 className="font-mono"
                 style={{
-                  fontSize: 8,
+                  fontSize: 10,
                   color: "var(--iris-text-muted)",
-                  opacity: 0.6,
+                  opacity: 0.7,
                 }}
               >
                 {showRawName}
@@ -137,7 +137,7 @@ export function TimelineItem({ event, isLast }: TimelineItemProps) {
         <span
           className="min-w-0 flex-1 truncate"
           style={{
-            fontSize: 9,
+            fontSize: 11,
             color: isError
               ? "var(--iris-bearish)"
               : "var(--iris-text-secondary)",
@@ -151,9 +151,9 @@ export function TimelineItem({ event, isLast }: TimelineItemProps) {
           <span
             className="flex-shrink-0 font-mono"
             style={{
-              fontSize: 8,
+              fontSize: 10,
               color: "var(--iris-text-muted)",
-              opacity: 0.5,
+              opacity: 0.7,
             }}
           >
             {formatDuration(event.duration)}
@@ -163,7 +163,7 @@ export function TimelineItem({ event, isLast }: TimelineItemProps) {
         {/* Timestamp */}
         <span
           className="ml-auto flex-shrink-0 font-mono"
-          style={{ fontSize: 8, color: "var(--iris-text-muted)", opacity: 0.5 }}
+          style={{ fontSize: 10, color: "var(--iris-text-muted)", opacity: 0.7 }}
         >
           {formatTime(event.timestamp)}
         </span>
@@ -192,7 +192,7 @@ function ThinkingItem({ event }: { event: TimelineEvent }) {
       <span
         className="flex-shrink-0"
         style={{
-          fontSize: 9,
+          fontSize: 10,
           color: "var(--iris-accent-dim)",
           transform: expanded ? "rotate(90deg)" : "rotate(0deg)",
           transition: "transform 150ms",
@@ -208,7 +208,7 @@ function ThinkingItem({ event }: { event: TimelineEvent }) {
           <span
             className="truncate block font-mono"
             style={{
-              fontSize: 10,
+              fontSize: 11,
               color: "var(--iris-text-muted)",
               lineHeight: 1.4,
             }}
@@ -219,7 +219,7 @@ function ThinkingItem({ event }: { event: TimelineEvent }) {
           <pre
             className="whitespace-pre-wrap font-mono"
             style={{
-              fontSize: 10,
+              fontSize: 12,
               lineHeight: 1.5,
               color: "var(--iris-text-secondary)",
               margin: 0,

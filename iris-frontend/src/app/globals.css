@@ -16,7 +16,7 @@
   /* Text hierarchy */
   --iris-text: #D4D4DC;
   --iris-text-secondary: #8B8B9E;
-  --iris-text-muted: #525264;
+  --iris-text-muted: #6E6E85;
 
   /* Brand accents — Bloomberg Orange */
   --iris-accent: #F58025;
@@ -66,7 +66,7 @@ html {
 body {
   background: var(--iris-bg);
   color: var(--iris-text);
-  font-family: "DM Sans", system-ui, -apple-system, sans-serif;
+  font-family: "DM Sans", "PingFang SC", "Microsoft YaHei", system-ui, -apple-system, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
@@ -162,7 +162,7 @@ body::before {
 table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 th {
@@ -171,15 +171,15 @@ th {
   font-weight: 600;
   text-align: left;
   color: var(--iris-accent);
-  font-size: 12px;
+  font-size: 11px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  padding: 5px 8px;
+  padding: 6px 10px;
   border-bottom: 1px solid var(--iris-border);
 }
 
 td {
-  padding: 3px 8px;
+  padding: 5px 10px;
   border-bottom: 1px solid rgba(30, 32, 48, 0.3);
   color: var(--iris-text-secondary);
 }
@@ -235,7 +235,7 @@ tbody tr:hover {
 /* ─── Prose / Markdown Styling ─── */
 .prose-iris {
   line-height: 1.6;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .prose-iris h1,
@@ -247,13 +247,13 @@ tbody tr:hover {
   margin-bottom: 0.4em;
 }
 
-.prose-iris h1 { font-size: 14px; }
-.prose-iris h2 { font-size: 12px; }
-.prose-iris h3 { font-size: 12px; }
+.prose-iris h1 { font-size: 16px; }
+.prose-iris h2 { font-size: 14px; }
+.prose-iris h3 { font-size: 13px; }
 
 .prose-iris p {
   margin-bottom: 0.5em;
-  color: var(--iris-text-secondary);
+  color: var(--iris-text);
 }
 
 .prose-iris code {
@@ -319,7 +319,7 @@ tbody tr:hover {
 /* ─── Prose Small (reasoning area) ─── */
 .prose-iris-sm {
   font-family: "JetBrains Mono", monospace;
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.5;
   color: var(--iris-text-secondary);
 }

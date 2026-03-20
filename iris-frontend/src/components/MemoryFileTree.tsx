@@ -63,7 +63,7 @@ function FolderNode({
     <div>
       <button
         onClick={() => setExpanded(!expanded)}
-        className="flex w-full items-center gap-[4px] px-[6px] py-[3px] text-left transition-colors hover:bg-[var(--iris-surface-hover)]"
+        className="flex w-full items-center gap-[4px] px-[6px] py-[5px] text-left transition-colors hover:bg-[var(--iris-surface-hover)]"
       >
         <svg
           className={`h-[8px] w-[8px] shrink-0 text-[var(--iris-text-muted)] transition-transform ${
@@ -80,10 +80,10 @@ function FolderNode({
             d="M9 5l7 7-7 7"
           />
         </svg>
-        <span className="font-mono text-[11px] font-semibold uppercase tracking-wider text-[var(--iris-accent)]">
+        <span className="font-mono text-[12px] font-semibold uppercase tracking-wider text-[var(--iris-accent)]">
           {label}
         </span>
-        <span className="font-mono text-[10px] text-[var(--iris-text-muted)]">
+        <span className="font-mono text-[11px] text-[var(--iris-text-muted)]">
           ({files.length})
         </span>
       </button>
@@ -95,9 +95,9 @@ function FolderNode({
               <button
                 key={filename}
                 onClick={() => onSelect(type, filename)}
-                className={`flex w-full items-center gap-[4px] px-[6px] py-[2px] text-left font-mono text-[11px] transition-colors ${
+                className={`flex w-full items-center gap-[4px] px-[6px] py-[4px] text-left font-mono text-[12px] transition-colors ${
                   isSelected
-                    ? "bg-[var(--iris-surface-hover)] text-[var(--iris-accent)]"
+                    ? "bg-[var(--iris-surface-hover)] text-[var(--iris-accent)] border-l-2 border-l-[var(--iris-accent)]"
                     : "text-[var(--iris-text-secondary)] hover:bg-[var(--iris-surface-hover)] hover:text-[var(--iris-text)]"
                 }`}
               >

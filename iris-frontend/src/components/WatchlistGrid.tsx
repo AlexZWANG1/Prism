@@ -18,8 +18,8 @@ export function WatchlistGrid({ items, loading, onRefresh }: WatchlistGridProps)
         style={{ borderBottom: "1px solid var(--iris-accent)" }}
       >
         <h2
-          className="font-mono text-[11px] font-semibold tracking-[0.15em] uppercase"
-          style={{ color: "var(--iris-text-muted)" }}
+          className="font-mono text-[12px] font-semibold tracking-[0.15em] uppercase"
+          style={{ color: "var(--iris-text-secondary)" }}
         >
           WATCHLIST
         </h2>
@@ -32,7 +32,7 @@ export function WatchlistGrid({ items, loading, onRefresh }: WatchlistGridProps)
         <button
           onClick={onRefresh}
           disabled={loading}
-          className="ml-auto font-mono text-[11px] px-1.5 py-px border cursor-pointer uppercase tracking-wider transition-colors"
+          className="ml-auto font-mono text-[12px] px-1.5 py-px border cursor-pointer uppercase tracking-wider transition-colors"
           style={{
             borderColor: "var(--iris-border)",
             color: "var(--iris-text-muted)",
@@ -57,13 +57,13 @@ export function WatchlistGrid({ items, loading, onRefresh }: WatchlistGridProps)
         <table className="mt-0.5 w-full" style={{ borderCollapse: "collapse" }}>
           <thead>
             <tr style={{ borderBottom: "1px solid var(--iris-border)" }}>
-              <th className="text-left font-mono text-[10px] uppercase tracking-wider py-1 px-1 font-normal" style={{ color: "var(--iris-text-muted)" }}>TICKER</th>
-              <th className="text-left font-mono text-[10px] uppercase tracking-wider py-1 px-1 font-normal" style={{ color: "var(--iris-text-muted)" }}>NAME</th>
-              <th className="text-right font-mono text-[10px] uppercase tracking-wider py-1 px-1 font-normal" style={{ color: "var(--iris-text-muted)" }}>PRICE</th>
-              <th className="text-right font-mono text-[10px] uppercase tracking-wider py-1 px-1 font-normal" style={{ color: "var(--iris-text-muted)" }}>GAP%</th>
-              <th className="text-right font-mono text-[10px] uppercase tracking-wider py-1 px-1 font-normal" style={{ color: "var(--iris-text-muted)" }}>FV</th>
-              <th className="text-right font-mono text-[10px] uppercase tracking-wider py-1 px-1 font-normal" style={{ color: "var(--iris-text-muted)" }}>REC</th>
-              <th className="text-right font-mono text-[10px] uppercase tracking-wider py-1 px-1 font-normal" style={{ color: "var(--iris-text-muted)" }}></th>
+              <th className="text-left font-mono text-[11px] uppercase tracking-wider py-1.5 px-2 font-normal" style={{ color: "var(--iris-text-secondary)" }}>TICKER</th>
+              <th className="text-left font-mono text-[11px] uppercase tracking-wider py-1.5 px-2 font-normal" style={{ color: "var(--iris-text-secondary)" }}>NAME</th>
+              <th className="text-right font-mono text-[11px] uppercase tracking-wider py-1.5 px-2 font-normal" style={{ color: "var(--iris-text-secondary)" }}>PRICE</th>
+              <th className="text-right font-mono text-[11px] uppercase tracking-wider py-1.5 px-2 font-normal" style={{ color: "var(--iris-text-secondary)" }}>GAP%</th>
+              <th className="text-right font-mono text-[11px] uppercase tracking-wider py-1.5 px-2 font-normal" style={{ color: "var(--iris-text-secondary)" }}>FV</th>
+              <th className="text-right font-mono text-[11px] uppercase tracking-wider py-1.5 px-2 font-normal" style={{ color: "var(--iris-text-secondary)" }}>REC</th>
+              <th className="text-right font-mono text-[11px] uppercase tracking-wider py-1.5 px-2 font-normal" style={{ color: "var(--iris-text-secondary)" }}></th>
             </tr>
           </thead>
           <tbody>
