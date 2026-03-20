@@ -52,35 +52,39 @@ export function ReportPanel() {
         </ReactMarkdown>
       </div>
 
-      {/* Memory section at bottom of report */}
-      {hasMemory && (
-        <div
+      {/* Memory / calibration section at bottom of report */}
+      <div
+        style={{
+          marginTop: 24,
+          paddingTop: 12,
+          borderTop: "1px solid var(--iris-border)",
+        }}
+      >
+        <h3
+          className="font-mono"
           style={{
-            marginTop: 24,
-            paddingTop: 12,
-            borderTop: "1px solid var(--iris-border)",
+            fontSize: 12,
+            fontWeight: 600,
+            color: "var(--iris-accent)",
+            letterSpacing: "0.08em",
+            textTransform: "uppercase" as const,
+            marginBottom: 8,
           }}
         >
-          <h3
-            className="font-mono"
-            style={{
-              fontSize: 12,
-              fontWeight: 600,
-              color: "var(--iris-accent)",
-              letterSpacing: "0.08em",
-              textTransform: "uppercase" as const,
-              marginBottom: 8,
-            }}
-          >
-            记忆 / 校准
-          </h3>
+          记忆 / 校准
+        </h3>
+        {hasMemory ? (
           <CalibrationSummary
             hits={memoryPanel.calibrationHits}
             misses={memoryPanel.calibrationMisses}
             recentRecalls={memoryPanel.recentRecalls}
           />
-        </div>
-      )}
+        ) : (
+          <p className="font-mono text-[12px] text-[var(--iris-text-muted)]">
+            暂无校准记录 — 分析更多公司后将积累预测准确度数据
+          </p>
+        )}
+      </div>
     </div>
   );
 }

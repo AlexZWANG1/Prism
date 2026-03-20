@@ -6,9 +6,32 @@ import { TimelineItem } from "./TimelineItem";
 import type { TimelineEvent } from "@/types/analysis";
 
 /**
- * Extract <thinking> blocks from reasoningText and interleave them
- * with tool-call events so each thinking block appears before its
- * corresponding tool group.
+ * Extract tool name hints from a thinking block text.
+ * Looks for patterns like `recall_memory`, `build_dcf`, etc.
+ */
+const KNOWN_TOOLS = [
+  "recall_memory", "recall_experiences", "memory_search",
+  "fmp_get_financials", "yf_quote", "yf_history",
+  "build_dcf", "get_comps", "save_memory", "save_experience",
+  "exa_search", "web_fetch", "extract_observation",
+  "create_hypothesis", "generate_trade_signal",
+  "query_knowledge", "search_documents",
+];
+
+function extractToolHint(thinkingText: string): string | null {
+  // Look for tool mentions — the LAST tool mentioned is usually the one about to be called
+  let lastTool: string | null = null;
+  for (const tool of KNOWN_TOOLS) {
+    if (thinkingText.includes(tool)) {
+      lastTool = tool;
+    }
+  }
+  return lastTool;
+}
+
+/**
+ * Interleave thinking blocks with tool call events.
+ * Each thinking block is placed before the first tool call it mentions.
  */
 function interleaveThinking(
   toolEvents: TimelineEvent[],
@@ -16,61 +39,72 @@ function interleaveThinking(
 ): TimelineEvent[] {
   if (!reasoningText) return toolEvents;
 
-  const thinkingBlocks: string[] = [];
+  // Extract all thinking blocks
+  const thinkingBlocks: { text: string; toolHint: string | null }[] = [];
   const re = /<thinking>([\s\S]*?)<\/thinking>/g;
   let match;
   while ((match = re.exec(reasoningText)) !== null) {
-    thinkingBlocks.push(match[1].trim());
+    const text = match[1].trim();
+    thinkingBlocks.push({ text, toolHint: extractToolHint(text) });
   }
 
   if (thinkingBlocks.length === 0) return toolEvents;
 
-  // Strategy: insert thinking block N before the Nth "group" of tool calls.
-  // A "group" starts after a thinking block in the original LLM flow.
-  // Simple heuristic: distribute thinking blocks evenly before tool calls.
-  // Since thinking blocks come before tool calls sequentially, we pair them
-  // by index: thinking[0] → before tools[0], thinking[1] → before the next
-  // tool call that follows, etc.
-
   const result: TimelineEvent[] = [];
   let thinkIdx = 0;
 
-  // Find insertion points: the first tool of each "group"
-  // Heuristic: thinking block N goes before tool event N (or proportionally distributed)
-  const toolsPerThinking = toolEvents.length > 0 && thinkingBlocks.length > 0
-    ? Math.max(1, Math.floor(toolEvents.length / thinkingBlocks.length))
-    : Infinity;
+  // Track which tool events we've seen to match thinking blocks
+  // Strategy: for each tool event, check if the next unplaced thinking block
+  // mentions this tool (or a related tool). If so, insert it before.
+  const usedThinking = new Set<number>();
 
   for (let i = 0; i < toolEvents.length; i++) {
-    // Insert thinking block before the corresponding tool group
-    if (thinkIdx < thinkingBlocks.length && i === thinkIdx * toolsPerThinking) {
-      const block = thinkingBlocks[thinkIdx];
-      const firstLine = block.split("\n")[0]?.slice(0, 80) || "";
-      result.push({
-        id: `thinking-${thinkIdx}`,
-        timestamp: toolEvents[i].timestamp - 0.001,
-        tool: "thinking",
-        message: firstLine,
-        phase: toolEvents[i].phase,
-        color: "gold",
-        status: "complete",
-        fullText: block,
-      });
-      thinkIdx++;
+    const ev = toolEvents[i];
+
+    // Try to place the next unplaced thinking block before this tool
+    if (thinkIdx < thinkingBlocks.length && !usedThinking.has(thinkIdx)) {
+      const tb = thinkingBlocks[thinkIdx];
+      const toolName = ev.tool;
+
+      // Place thinking if: it hints at this tool, OR it's the first tool and first thinking
+      const shouldPlace =
+        (tb.toolHint && toolName.includes(tb.toolHint.split("_")[0])) ||
+        (tb.toolHint === toolName) ||
+        (i === 0 && thinkIdx === 0) ||
+        // If the previous tool was different from current, this might be a new "group"
+        (i > 0 && toolEvents[i - 1].tool !== toolName && !usedThinking.has(thinkIdx));
+
+      if (shouldPlace) {
+        const block = tb.text;
+        const firstLine = block.split("\n")[0]?.slice(0, 80) || "";
+        result.push({
+          id: `thinking-${thinkIdx}`,
+          timestamp: ev.timestamp - 0.001,
+          tool: "thinking",
+          message: firstLine,
+          phase: ev.phase,
+          color: "gold",
+          status: "complete",
+          fullText: block,
+        });
+        usedThinking.add(thinkIdx);
+        thinkIdx++;
+      }
     }
-    result.push(toolEvents[i]);
+    result.push(ev);
   }
 
-  // Any remaining thinking blocks (e.g. final thinking after all tools)
-  while (thinkIdx < thinkingBlocks.length) {
-    const block = thinkingBlocks[thinkIdx];
+  // Any remaining thinking blocks go at the end
+  for (let t = 0; t < thinkingBlocks.length; t++) {
+    if (usedThinking.has(t)) continue;
+    const block = thinkingBlocks[t].text;
     const firstLine = block.split("\n")[0]?.slice(0, 80) || "";
     const lastTs = toolEvents.length > 0
       ? toolEvents[toolEvents.length - 1].timestamp
       : Date.now();
     result.push({
-      id: `thinking-${thinkIdx}`,
-      timestamp: lastTs + 0.001 * thinkIdx,
+      id: `thinking-${t}`,
+      timestamp: lastTs + 0.001 * t,
       tool: "thinking",
       message: firstLine,
       phase: "finalize",
@@ -78,7 +112,6 @@ function interleaveThinking(
       status: "complete",
       fullText: block,
     });
-    thinkIdx++;
   }
 
   return result;
