@@ -1,4 +1,4 @@
-﻿import json
+import json
 import math
 import sqlite3
 import uuid
@@ -173,6 +173,22 @@ class SQLiteRetriever(EvidenceRetriever):
                     FOREIGN KEY (document_id) REFERENCES knowledge_documents(id)
                 );
                 CREATE INDEX IF NOT EXISTS idx_kchunks_doc ON knowledge_chunks(document_id);
+
+                CREATE TABLE IF NOT EXISTS knowledge_items (
+                    id TEXT PRIMARY KEY,
+                    type TEXT NOT NULL,
+                    subject TEXT,
+                    content TEXT NOT NULL,
+                    structured_data TEXT DEFAULT '{}',
+                    confidence REAL,
+                    source TEXT,
+                    tags TEXT DEFAULT '[]',
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_ki_type ON knowledge_items(type);
+                CREATE INDEX IF NOT EXISTS idx_ki_subject ON knowledge_items(subject);
+                CREATE INDEX IF NOT EXISTS idx_ki_type_subject ON knowledge_items(type, subject);
             """)
             # Idempotent migration: add ticker column to valuations if missing
             try:
@@ -740,5 +756,216 @@ class SQLiteRetriever(EvidenceRetriever):
         doc["extraction_meta_json"] = json.loads(doc.get("extraction_meta_json") or "{}")
         return doc
 
+    # ---- knowledge_items CRUD ----
 
+    def save_knowledge_item(
+        self,
+        *,
+        type: str,
+        subject: str = None,
+        content: str,
+        structured_data: dict = None,
+        confidence: float = None,
+        source: str = None,
+        tags: list[str] = None,
+        item_id: str = None,
+    ) -> str:
+        """Save a knowledge item and auto-generate embedding. Returns the item ID."""
+        item_id = item_id or f"ki_{uuid.uuid4().hex[:8]}"
+        now = datetime.now(timezone.utc).isoformat()
+        sd_json = json.dumps(structured_data or {}, ensure_ascii=False, default=str)
+        tags_json = json.dumps(tags or [])
+        with self._conn() as conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO knowledge_items "
+                "(id, type, subject, content, structured_data, confidence, source, tags, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (item_id, type, subject, content, sd_json, confidence, source, tags_json, now, now),
+            )
+        # Auto-embed (best-effort)
+        embed_text = f"{subject}: {content}" if subject else content
+        self.save_embedding(item_id, embed_text, type)
+        return item_id
 
+    def get_knowledge_item(self, item_id: str) -> dict | None:
+        """Get a single knowledge_item by ID."""
+        with self._conn() as conn:
+            conn.row_factory = sqlite3.Row
+            row = conn.execute(
+                "SELECT * FROM knowledge_items WHERE id = ?", (item_id,)
+            ).fetchone()
+        if not row:
+            return None
+        d = dict(row)
+        d["structured_data"] = json.loads(d.get("structured_data") or "{}")
+        d["tags"] = json.loads(d.get("tags") or "[]")
+        return d
+
+    def query_knowledge_items(
+        self, *, type: str = None, subject: str = None, limit: int = 50
+    ) -> list[dict]:
+        """Query knowledge_items with optional filters."""
+        with self._conn() as conn:
+            conn.row_factory = sqlite3.Row
+            query = "SELECT * FROM knowledge_items"
+            conditions = []
+            params: list = []
+            if type:
+                conditions.append("type = ?")
+                params.append(type)
+            if subject:
+                conditions.append("UPPER(subject) = UPPER(?)")
+                params.append(subject)
+            if conditions:
+                query += " WHERE " + " AND ".join(conditions)
+            query += " ORDER BY created_at DESC LIMIT ?"
+            params.append(limit)
+            rows = conn.execute(query, params).fetchall()
+        results = []
+        for row in rows:
+            d = dict(row)
+            d["structured_data"] = json.loads(d.get("structured_data") or "{}")
+            d["tags"] = json.loads(d.get("tags") or "[]")
+            results.append(d)
+        return results
+
+    def update_knowledge_item_structured_data(self, item_id: str, updates: dict) -> bool:
+        """Merge updates into the structured_data JSON of a knowledge_item."""
+        item = self.get_knowledge_item(item_id)
+        if not item:
+            return False
+        sd = item["structured_data"]
+        sd.update(updates)
+        now = datetime.now(timezone.utc).isoformat()
+        with self._conn() as conn:
+            conn.execute(
+                "UPDATE knowledge_items SET structured_data = ?, updated_at = ? WHERE id = ?",
+                (json.dumps(sd, ensure_ascii=False, default=str), now, item_id),
+            )
+        return True
+
+    def migrate_to_unified_memory(self):
+        """Migrate data from legacy storage to knowledge_items table. Idempotent."""
+        migrated = {"observations": 0, "experiences": 0, "notes": 0, "predictions": 0, "documents": 0}
+
+        # 1. Migrate observations
+        with self._conn() as conn:
+            rows = conn.execute("SELECT id, subject, data FROM observations").fetchall()
+        for row in rows:
+            obs_id, subject, data_json = row
+            if self.get_knowledge_item(obs_id):
+                continue  # already migrated
+            try:
+                data = json.loads(data_json)
+                self.save_knowledge_item(
+                    item_id=obs_id,
+                    type="observation",
+                    subject=subject,
+                    content=data.get("claim", ""),
+                    structured_data={
+                        "fact_or_view": data.get("fact_or_view", "fact"),
+                        "relevance": data.get("relevance", 0.5),
+                        "citation": data.get("citation", ""),
+                        "source": data.get("source", ""),
+                        "time": data.get("time", ""),
+                    },
+                    confidence=data.get("relevance"),
+                    source=data.get("source", ""),
+                    tags=["migrated"],
+                )
+                migrated["observations"] += 1
+            except Exception:
+                pass
+
+        # 2. Migrate experience_library.json
+        from pathlib import Path
+        exp_path = Path("memory") / "experience_library.json"
+        if exp_path.exists():
+            try:
+                lib = json.loads(exp_path.read_text(encoding="utf-8"))
+                for exp in lib.get("experiences", []):
+                    exp_id = exp.get("id", f"ki_{uuid.uuid4().hex[:8]}")
+                    if self.get_knowledge_item(exp_id):
+                        continue
+                    companies = exp.get("companies", [])
+                    subject = companies[0] if companies else exp.get("sector", "")
+                    self.save_knowledge_item(
+                        item_id=exp_id,
+                        type="experience",
+                        subject=subject,
+                        content=exp.get("content", ""),
+                        structured_data={
+                            "zone": exp.get("zone"),
+                            "level": exp.get("level"),
+                            "evidence": exp.get("evidence", []),
+                            "evidence_count": exp.get("evidence_count", 0),
+                            "methodology": exp.get("methodology"),
+                            "times_retrieved": exp.get("times_retrieved", 0),
+                            "times_useful": exp.get("times_useful", 0),
+                            "status": exp.get("status", "active"),
+                        },
+                        confidence=exp.get("confidence", 0.5),
+                        tags=["migrated"],
+                    )
+                    migrated["experiences"] += 1
+            except Exception:
+                pass
+
+        # 3. Migrate company/sector/pattern notes
+        from core.config import get as config_get
+        base = Path(config_get("memory.base_dir", "./memory"))
+        for dir_name, note_cat in [("companies", "company"), ("sectors", "sector"), ("patterns", "patterns")]:
+            note_dir = base / dir_name
+            if not note_dir.exists():
+                continue
+            for f in note_dir.iterdir():
+                if not f.is_file() or not f.name.endswith(".md"):
+                    continue
+                subject = f.stem.upper()
+                note_id = f"ki_note_{note_cat}_{subject.lower()}"
+                if self.get_knowledge_item(note_id):
+                    continue
+                try:
+                    content = f.read_text(encoding="utf-8")
+                    self.save_knowledge_item(
+                        item_id=note_id,
+                        type="note",
+                        subject=subject,
+                        content=content,
+                        structured_data={"note_category": note_cat},
+                        tags=["migrated"],
+                    )
+                    migrated["notes"] += 1
+                except Exception:
+                    pass
+
+        # 4. Migrate calibration log
+        cal_path = base / "calibration" / "prediction_log.jsonl"
+        if cal_path.exists():
+            try:
+                for i, line in enumerate(cal_path.read_text(encoding="utf-8").strip().splitlines()):
+                    if not line.strip():
+                        continue
+                    entry = json.loads(line)
+                    pred_id = f"ki_pred_{i}"
+                    if self.get_knowledge_item(pred_id):
+                        continue
+                    self.save_knowledge_item(
+                        item_id=pred_id,
+                        type="prediction",
+                        subject=entry.get("company", ""),
+                        content=f"Fair value prediction: ${entry.get('predicted', 0):.2f}/share",
+                        structured_data={
+                            "metric": entry.get("metric", "fair_value"),
+                            "predicted": entry.get("predicted"),
+                            "actual": entry.get("actual"),
+                            "review_after": entry.get("date", ""),
+                        },
+                        source=entry.get("note", ""),
+                        tags=["migrated"],
+                    )
+                    migrated["predictions"] += 1
+            except Exception:
+                pass
+
+        return migrated

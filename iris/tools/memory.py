@@ -158,6 +158,21 @@ def save_memory(company: str, memory_type: str, content: str) -> ToolResult:
     if memory_type == "company":
         _append_calibration_entry(company, content)
 
+    # Dual-write to unified memory (knowledge_items)
+    try:
+        from tools.retrieval import SQLiteRetriever
+        from core.config import DB_PATH
+        retriever = SQLiteRetriever(DB_PATH)
+        retriever.save_knowledge_item(
+            type="note",
+            subject=company.upper(),
+            content=content,
+            structured_data={"note_category": memory_type},
+            source="save_memory",
+        )
+    except Exception:
+        pass  # best-effort
+
     rel_path = path.relative_to(_memory_base()).as_posix()
     return ToolResult.ok({"status": "ok", "path": rel_path})
 

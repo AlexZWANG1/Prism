@@ -30,7 +30,7 @@
           "在公司笔记里单独保留 assumptions vs actuals 对照区，便于后续复盘。"
         ]
       },
-      "times_retrieved": 0,
+      "times_retrieved": 3,
       "times_useful": 0,
       "created_at": "2026-03-20T00:00:45.209369",
       "last_validated": "2026-03-20",
@@ -87,7 +87,7 @@
           "验证核心需求时优先看总收入、Data Center 增长、gross margin、FCF，而不是只盯一次性损失。"
         ]
       },
-      "times_retrieved": 0,
+      "times_retrieved": 3,
       "times_useful": 0,
       "created_at": "2026-03-20T00:00:45.234508",
       "last_validated": "2026-03-20",
@@ -159,7 +159,7 @@
           "Seek segment-level cloud and AI monetization evidence before lowering long-run capex assumptions."
         ]
       },
-      "times_retrieved": 0,
+      "times_retrieved": 1,
       "times_useful": 0,
       "created_at": "2026-03-20T16:17:06.570177",
       "last_validated": "2026-03-20",
@@ -169,7 +169,7 @@
   "attribution_log": [],
   "metadata": {
     "created": "2026-03-20",
-    "last_updated": "2026-03-20T16:17:06.570339",
+    "last_updated": "2026-03-20T16:58:17.353601",
     "entry_count": 4
   }
 }

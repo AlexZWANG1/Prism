@@ -61,11 +61,9 @@ def _similarity_score(a: str, b: str) -> float:
 RECALL_EXPERIENCES_SCHEMA = make_tool_schema(
     name="recall_experiences",
     description=(
-        "Retrieve relevant experiences from the library before making predictions "
-        "or assumptions. ALWAYS call this before build_dcf or generate_trade_signal.\n\n"
-        "Returns Warning Zone entries (you MUST address these in your reasoning) "
-        "and Golden Zone entries (useful reference patterns).\n\n"
-        "Pass the company ticker and what you're about to judge (e.g., 'revenue growth prediction')."
+        "Retrieve relevant experiences from the library. Returns Warning Zone entries "
+        "(past errors and failures) and Golden Zone entries (validated patterns). "
+        "Pass the company ticker and what you're about to judge."
     ),
     properties={
         "company": {
@@ -161,15 +159,8 @@ SAVE_EXPERIENCE_SCHEMA = make_tool_schema(
 RUN_REFLECTION_SCHEMA = make_tool_schema(
     name="run_reflection",
     description=(
-        "Systematic reflection session: compare original predictions against actual "
-        "results. This is the core learning loop.\n\n"
-        "Call this when actual data becomes available (e.g., quarterly earnings released).\n\n"
-        "Generates:\n"
-        "1. Assumption-level error analysis (which assumptions were wrong, by how much)\n"
-        "2. Reasoning chain review (why were they wrong)\n"
-        "3. Experience library entries (golden/warning zone suggestions)\n"
-        "4. Calibration bias update\n\n"
-        "AI must answer 5 reflection questions for each reflection session."
+        "Compare original predictions against actual results. Generates assumption-level "
+        "error analysis, experience library entry suggestions, and calibration bias updates."
     ),
     properties={
         "company": {"type": "string", "description": "Company ticker"},
@@ -330,12 +321,38 @@ def recall_experiences(
         "golden_zone": goldens,
         "total_library_size": len(experiences),
         "instruction": (
-            "You MUST explicitly address each Warning Zone entry in your analysis. "
-            "Explain whether you adjusted your assumptions based on the warning, and why."
+            "Warning Zone entries returned — consider whether to adjust your assumptions."
             if warnings else
             "No warnings for this context. Golden entries are reference patterns."
         ),
     })
+
+
+def _dual_write_experience(entry_id, content, companies, zone, level, confidence,
+                           sector, evidence, methodology):
+    """Best-effort dual-write to knowledge_items for unified memory."""
+    try:
+        from tools.retrieval import SQLiteRetriever
+        from core.config import DB_PATH
+        retriever = SQLiteRetriever(DB_PATH)
+        subject = (companies[0] if companies else sector or "").upper()
+        retriever.save_knowledge_item(
+            item_id=entry_id,
+            type="experience",
+            subject=subject,
+            content=content,
+            structured_data={
+                "zone": zone, "level": level,
+                "evidence": evidence or [],
+                "evidence_count": len(evidence) if evidence else 1,
+                "methodology": methodology,
+                "times_retrieved": 0, "times_useful": 0,
+                "status": "active",
+            },
+            confidence=confidence,
+        )
+    except Exception:
+        pass
 
 
 def save_experience(
@@ -417,6 +434,8 @@ def save_experience(
             existing_evidence.extend(evidence)
             best_match["evidence"] = existing_evidence
         _save_library(library)
+        _dual_write_experience(best_match["id"], best_match["content"], companies,
+                               zone, level, confidence, sector, evidence, methodology)
         return ToolResult.ok({
             "action": "deduplicated",
             "existing_id": best_match["id"],
@@ -439,6 +458,8 @@ def save_experience(
         merged_companies = list(set(best_match.get("companies", []) + companies))
         best_match["companies"] = merged_companies
         _save_library(library)
+        _dual_write_experience(best_match["id"], best_match["content"], companies,
+                               zone, level, confidence, sector, evidence, methodology)
         return ToolResult.ok({
             "action": "merged",
             "existing_id": best_match["id"],
@@ -470,6 +491,8 @@ def save_experience(
     library["experiences"] = experiences
     _save_library(library)
 
+    _dual_write_experience(new_id, content, companies, zone, level, confidence,
+                           sector, evidence, methodology)
     return ToolResult.ok({
         "action": "inserted",
         "id": new_id,
@@ -589,16 +612,15 @@ def run_reflection(
         "experience_suggestions": experience_suggestions,
         "bias_check": bias_check,
         "reflection_questions": [
-            f"1. 最大误差源是 {ranked[0][0] if ranked else 'N/A'}（误差 {ranked[0][1]['abs_error']*100:.1f}pp）。它对 fair value 影响多大？",
-            "2. 回溯原始推理链：你当时的逻辑哪里出了问题？",
-            "3. 你当时用了哪些经验库条目？它们的建议足够吗？",
-            "4. 这个错误是系统性的还是一次性事件？",
-            "5. 下次分析同一家公司时，你会改变什么？",
+            f"1. The largest error source is {ranked[0][0] if ranked else 'N/A'} ({ranked[0][1]['abs_error']*100:.1f}pp). How much did it impact fair value?",
+            "2. Trace back your original reasoning chain: where did the logic go wrong?",
+            "3. Which experience library entries did you use? Were their suggestions sufficient?",
+            "4. Is this error systematic or a one-time event?",
+            "5. What would you change next time you analyze this company?",
         ],
         "instruction": (
-            "You MUST answer all 5 reflection questions above in your response. "
-            "Then call save_experience for each suggestion in experience_suggestions. "
-            "This is how you learn."
+            "Answer all 5 reflection questions in your response. "
+            "Then call save_experience for each suggestion in experience_suggestions."
         ),
     })
 

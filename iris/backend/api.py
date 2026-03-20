@@ -19,7 +19,7 @@ from typing import Optional
 
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, File, Form, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -42,6 +42,7 @@ from backend.user_input_tool import (
 from tools.base import Tool
 from tools.memory import check_calibration
 from tools.retrieval import SQLiteRetriever
+from tools.url_ingest import ingest_url_document
 
 
 # ── Retriever helper ─────────────────────────────────────────
@@ -78,7 +79,13 @@ app = FastAPI(title="IRIS API", version="0.1.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:3001"],
+    allow_origins=[
+        "http://localhost:3000",
+        "http://localhost:3001",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:3001",
+    ],
+    allow_origin_regex=r"(chrome-extension|moz-extension)://.*",
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -121,6 +128,9 @@ class KnowledgeUrlRequest(BaseModel):
     title: Optional[str] = None
     company: Optional[str] = None
     tags: Optional[list[str]] = None
+    page_html: Optional[str] = None
+    source_type: Optional[str] = None
+    force_reingest: Optional[bool] = False
 
 
 class KnowledgeSearchRequest(BaseModel):
@@ -210,6 +220,26 @@ def _save_to_db(session: AnalysisSession, snap: dict, ticker: str | None, result
                 gap_pct=pv.get("gap_pct", 0),
                 run_id=session.id,
             )
+            # Auto-save prediction to unified memory
+            try:
+                retriever.save_knowledge_item(
+                    type="prediction",
+                    subject=ticker,
+                    content=f"Fair value prediction: ${fv:.2f}/share",
+                    structured_data={
+                        "metric": "fair_value",
+                        "predicted": fv,
+                        "actual": None,
+                        "current_price": pv.get("current_price", 0),
+                        "review_after": (
+                            datetime.now(timezone.utc) + timedelta(days=90)
+                        ).strftime("%Y-%m-%d"),
+                        "run_id": session.id,
+                    },
+                    source=f"build_dcf in {session.id}",
+                )
+            except Exception:
+                pass  # best-effort
 
     # Use accumulated reasoning text, or fall back to result.reply
     reasoning_text = snap["reasoning_text"] or result.reply or ""
@@ -785,34 +815,39 @@ async def upload_knowledge_note(req: KnowledgeNoteRequest):
     return result
 
 
-@app.post("/api/knowledge/upload-url")
-async def upload_knowledge_url(req: KnowledgeUrlRequest):
-    """Fetch URL content and save to the knowledge base."""
-    from tools.search import web_fetch
-
-    fetch_result = web_fetch(url=req.url)
-    if fetch_result.status != "ok":
-        raise HTTPException(status_code=400, detail=f"Failed to fetch URL: {fetch_result.error}")
-
-    content = fetch_result.data.get("content", "")
-    if not content.strip():
-        raise HTTPException(status_code=400, detail="Fetched URL content is empty")
-
-    title = req.title or fetch_result.data.get("title", req.url)
-
+async def _ingest_url(req: KnowledgeUrlRequest, default_source: str) -> dict:
+    """Shared URL ingest logic for upload and import endpoints."""
     retriever = _get_retriever()
-    result = retriever.save_document(
-        title=title,
-        doc_type="url",
-        content_text=content,
-        source_path=req.url,
+    result = ingest_url_document(
+        retriever=retriever,
+        url=req.url,
+        title=req.title,
+        page_html=req.page_html,
+        source_type=req.source_type or default_source,
         company=req.company,
         tags=req.tags,
+        force_reingest=bool(req.force_reingest),
     )
+    if result.get("status") == "failed":
+        raise HTTPException(status_code=400, detail=result.get("detail") or result.get("error") or "URL ingest failed")
     return result
 
 
-from fastapi import File, Form, UploadFile
+@app.post("/api/knowledge/upload-url")
+async def upload_knowledge_url(req: KnowledgeUrlRequest):
+    """Fetch URL content and save to the knowledge base."""
+    result = await _ingest_url(req, "manual_url")
+    doc = result.get("document") or {}
+    doc["ingest_status"] = result.get("status")
+    if result.get("duplicate_of"):
+        doc["duplicate_of"] = result.get("duplicate_of")
+    return doc
+
+
+@app.post("/api/knowledge/import-url")
+async def import_knowledge_url(req: KnowledgeUrlRequest):
+    """URL import endpoint for browser extension, with explicit ingest status."""
+    return await _ingest_url(req, "browser_extension")
 
 
 @app.post("/api/knowledge/upload-file")

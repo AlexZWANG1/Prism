@@ -32,6 +32,10 @@ from tools.knowledge_ingest import (
     upload_document, UPLOAD_DOCUMENT_SCHEMA,
     search_documents, SEARCH_DOCUMENTS_SCHEMA,
 )
+from tools.unified_memory import (
+    remember, REMEMBER_SCHEMA,
+    recall, RECALL_SCHEMA,
+)
 
 
 def _cli_event_handler(event: HarnessEvent):
@@ -125,6 +129,12 @@ def build_harness(
         Tool(search_documents, SEARCH_DOCUMENTS_SCHEMA, retriever=retriever),
     ]
 
+    # Unified memory tools (primary — replaces old memory/experience/search tools)
+    unified_tools = [
+        Tool(remember, REMEMBER_SCHEMA, retriever=retriever),
+        Tool(recall, RECALL_SCHEMA, retriever=retriever),
+    ]
+
     # Skill tools — mode-filtered
     skills_dir = skills_cfg.get("dir", "./skills")
     skill_name_list = mode_cfg.get("skills")  # None = load all
@@ -145,7 +155,7 @@ def build_harness(
         full_soul = base_soul + "\n\n---\n\n" + skill_soul
 
     # Tool set — filter by mode's always_exposed_tools if defined
-    all_candidate_tools = core_tools + memory_tools + knowledge_tools + skill_tools
+    all_candidate_tools = core_tools + unified_tools + memory_tools + knowledge_tools + skill_tools
     if mode_exposed_tools:
         exposed_set = set(mode_exposed_tools)
         all_tools = [t for t in all_candidate_tools if t.name in exposed_set]

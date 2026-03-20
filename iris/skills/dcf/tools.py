@@ -47,9 +47,8 @@ BUILD_DCF_SCHEMA = make_tool_schema(
         '  "shares_outstanding": 24500, "net_cash": 30000,\n'
         '  "current_price": 135.0\n'
         "}}\n\n"
-        "IMPORTANT: You MUST populate ALL fields from data gathered via fmp_get_financials. "
-        "Do NOT pass an empty dict. Each segment needs exactly projection_years growth_rates entries. "
-        "da_pct_of_revenue is D&A as fraction of revenue — compute from depreciationAndAmortization / revenue in the cash flow statement."
+        "Each segment needs exactly projection_years growth_rates entries. "
+        "da_pct_of_revenue is D&A as fraction of revenue (depreciationAndAmortization / revenue)."
     ),
     properties={
         "assumptions": {

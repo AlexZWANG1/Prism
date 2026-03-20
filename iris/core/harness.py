@@ -300,6 +300,14 @@ class Harness:
             )
 
             if not response.tool_calls:
+                # Check workflow completions before accepting final response
+                steering = self._check_workflow_completions(tool_log, messages)
+                if steering and main_round < 2:
+                    messages.append({"role": "user", "content": f"[WORKFLOW] {steering}"})
+                    self._emit(EventType.STEERING_INJECTED, {"message": steering})
+                    main_round += 1
+                    continue
+
                 self._emit(
                     EventType.TURN_END,
                     {
@@ -422,6 +430,33 @@ class Harness:
                 },
             )
             main_round += 1
+
+    # Workflow completions ----------------------------------------
+
+    def _check_workflow_completions(self, tool_log: list[dict], messages: list[dict]) -> str | None:
+        """Check if critical workflow steps were completed before final response.
+        Returns a steering message if something is missing, or None if OK."""
+
+        tools_called = {entry["tool"] for entry in tool_log}
+
+        # Only steer for analysis runs (skip if this looks like a simple Q&A or learning session)
+        if not tools_called & {"fmp_get_financials", "fmp_financials"}:
+            return None
+
+        if "build_dcf" not in tools_called:
+            return (
+                "You haven't built a valuation model yet. "
+                "Call build_dcf with assumptions derived from the financial data you've gathered. "
+                "A complete analysis requires a quantitative valuation anchor."
+            )
+
+        if "get_comps" not in tools_called:
+            return (
+                "You've built a DCF but haven't cross-checked against peer multiples. "
+                "Consider calling get_comps for validation before finalizing."
+            )
+
+        return None
 
     # LLM call ---------------------------------------------------
 

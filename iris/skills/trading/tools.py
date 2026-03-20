@@ -54,11 +54,9 @@ def _save_portfolio(portfolio: dict):
 GENERATE_TRADE_SIGNAL_SCHEMA = make_tool_schema(
     name="generate_trade_signal",
     description=(
-        "Evaluate whether to BUY, HOLD, TRIM, or SELL a stock based on existing "
-        "hypothesis confidence, DCF fair value, current price, and portfolio constraints.\n\n"
-        "Requires a completed analysis — do NOT call this without having run build_dcf "
-        "and create_hypothesis first.\n\n"
-        "Returns: action, target_weight, reasoning, constraint checks."
+        "Evaluate whether to BUY, HOLD, TRIM, or SELL a stock based on hypothesis "
+        "confidence, DCF fair value, current price, and portfolio constraints. "
+        "Returns action, target_weight, reasoning, and constraint checks."
     ),
     properties={
         "ticker": {

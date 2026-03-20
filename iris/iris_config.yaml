@@ -21,11 +21,8 @@ harness:
   tool_injection_mode: "dynamic"   # "dynamic" or "all"
   max_tools_per_round: 10
   always_exposed_tools:
-    - query_knowledge
-    - memory_search
-    - recall_memory
-    - save_memory
-    - search_documents
+    - recall
+    - remember
     - build_dcf
     - get_comps
   tool_triggers:
@@ -100,21 +97,17 @@ skills:
 # ── Mode-specific overrides ──
 modes:
   analysis:
-    soul_files: [role.md, process.md]
+    soul_files: [role.md, v0.1.md, self_check.md, steering.md]
     skills: [hypothesis, dcf, trading, experience]
     tool_injection_mode: "dynamic"
     always_exposed_tools:
-      - recall_memory
-      - save_memory
-      - save_experience
-      - recall_experiences
-      - memory_search
-      - search_documents
+      - recall
+      - remember
       - build_dcf
       - get_comps
       - create_hypothesis
-      - extract_observation
       - add_evidence_card
+      - check_calibration
       - exa_search
       - web_fetch
       - fmp_get_financials
@@ -131,8 +124,8 @@ modes:
     skills: [reflection, experience]
     tool_injection_mode: "all"
     always_exposed_tools:
-      - recall_memory
-      - save_memory
+      - recall
+      - remember
       - recall_experiences
       - save_experience
       - run_reflection
