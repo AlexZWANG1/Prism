@@ -125,15 +125,15 @@ export async function getHistoryDetail(runId: string): Promise<AnalysisSnapshot>
   return request<AnalysisSnapshot>(`/api/history/${encodeURIComponent(runId)}`);
 }
 
-export async function probeSession(analysisId: string): Promise<boolean> {
+export async function probeSession(analysisId: string): Promise<{ live: boolean; query?: string }> {
   try {
     const res = await fetch(`${BASE_URL}/api/analyze/${analysisId}/status`);
-    if (res.status !== 200) return false;
+    if (res.status !== 200) return { live: false };
     const data = await res.json();
-    // Only treat as live if session exists AND is still running/waiting
-    return data.exists === true && (data.status === "running" || data.status === "waiting");
+    const live = data.exists === true && (data.status === "running" || data.status === "waiting");
+    return { live, query: data.query || "" };
   } catch {
-    return false;
+    return { live: false };
   }
 }
 

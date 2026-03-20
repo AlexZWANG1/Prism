@@ -203,7 +203,7 @@ async def start_analysis(req: AnalyzeRequest):
     # Build harness with event callback that feeds the session queue
     harness, _retriever = build_harness(streaming=True, mode=mode)
 
-    session = create_session(harness)
+    session = create_session(harness, query=req.query)
 
     # Create the on_event callback that pushes to session.events
     def on_event(event: HarnessEvent) -> None:
@@ -351,7 +351,7 @@ async def session_status(analysis_id: str):
     session = get_session(analysis_id)
     if session is None:
         raise HTTPException(status_code=404, detail="Session not found")
-    return {"exists": True, "status": session.status}
+    return {"exists": True, "status": session.status, "query": session.query}
 
 
 @app.post("/api/analyze/{analysis_id}/steer")

@@ -21,6 +21,7 @@ export default function AnalysisPage() {
 
   const pageState = useAnalysisStore((s) => s.pageState);
   const isReplay = useAnalysisStore((s) => s.isReplay);
+  const analysisQuery = useAnalysisStore((s) => s.analysisQuery);
   const activeTab = useAnalysisStore((s) => s.activeTab);
   const pendingQuestion = useAnalysisStore((s) => s.pendingQuestion);
 
@@ -48,6 +49,15 @@ export default function AnalysisPage() {
       <div className="flex flex-1 min-h-0 overflow-hidden">
         {/* Left Panel - fixed 320px log panel */}
         <div className="flex w-[320px] shrink-0 flex-col border-r border-[var(--iris-border)]">
+          {/* Query display */}
+          {analysisQuery && (
+            <div className="shrink-0 border-b border-[var(--iris-border)] px-[10px] py-[6px]">
+              <p className="font-mono text-[12px] text-[var(--iris-text)] truncate">
+                <span className="text-[var(--iris-accent)] mr-1.5">&gt;</span>
+                {analysisQuery}
+              </p>
+            </div>
+          )}
           {/* Phase Indicator */}
           <div className="shrink-0 border-b border-[var(--iris-border)] px-[8px] py-[4px]">
             <PhaseIndicator />

@@ -85,8 +85,11 @@ export function useAnalysisStream(analysisId: string | null) {
     resolvedRef.current = true;
 
     (async () => {
-      const isLive = await probeSession(analysisId);
-      if (isLive) {
+      const probe = await probeSession(analysisId);
+      if (probe.live) {
+        if (probe.query) {
+          useAnalysisStore.setState({ analysisQuery: probe.query });
+        }
         connectSSE(analysisId);
       } else {
         try {

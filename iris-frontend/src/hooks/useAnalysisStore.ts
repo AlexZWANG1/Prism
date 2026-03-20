@@ -19,6 +19,7 @@ interface AnalysisStore {
   pageState: PageState;
   isReplay: boolean;
   analysisId: string | null;
+  analysisQuery: string;
   timeline: TimelineEvent[];
   reasoningText: string;
   thinkingText: string;
@@ -79,6 +80,7 @@ export const useAnalysisStore = create<AnalysisStore>((set, get) => ({
   pageState: "IDLE",
   isReplay: false,
   analysisId: null,
+  analysisQuery: "",
   timeline: [],
   reasoningText: "",
   thinkingText: "",
@@ -93,7 +95,7 @@ export const useAnalysisStore = create<AnalysisStore>((set, get) => ({
   memoryPanel: initialMemoryPanel,
 
   startAnalysis: async (query: string, contextDocs?: string[]) => {
-    set({ pageState: "RUNNING", timeline: [], reasoningText: "", thinkingText: "", _rawTextBuffer: "", currentPhase: "gather", isReplay: false });
+    set({ pageState: "RUNNING", analysisQuery: query, timeline: [], reasoningText: "", thinkingText: "", _rawTextBuffer: "", currentPhase: "gather", isReplay: false });
     try {
       const response = await api.startAnalysis({
         query,
@@ -371,6 +373,7 @@ export const useAnalysisStore = create<AnalysisStore>((set, get) => ({
       pageState: "COMPLETE",
       isReplay: true,
       analysisId: snapshot.id,
+      analysisQuery: snapshot.query || "",
       reasoningText: snapshot.reasoning_text || "",
       thinkingText: snapshot.thinking_text || "",
       timeline: snapshot.timeline || [],

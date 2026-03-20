@@ -58,6 +58,7 @@ class AnalysisSession:
     id: str
     harness: Harness
     events: queue.Queue  # Queue[dict] — threading.Queue, NOT asyncio.Queue
+    query: str = ""
     status: Literal["running", "waiting", "complete", "error"] = "running"
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     user_input_event: threading.Event = field(default_factory=threading.Event)
@@ -428,12 +429,13 @@ class AnalysisSession:
         }
 
 
-def create_session(harness: Harness) -> AnalysisSession:
+def create_session(harness: Harness, query: str = "") -> AnalysisSession:
     """Create a new analysis session wrapping a harness instance."""
     return AnalysisSession(
         id=uuid.uuid4().hex[:16],
         harness=harness,
         events=queue.Queue(),
+        query=query,
     )
 
 
