@@ -681,38 +681,49 @@ async def upload_knowledge_file(
     title: str = Form(None),
     company: str = Form(None),
     tags: str = Form(None),
+    engine: str = Form(None),
 ):
-    """Upload a file (PDF or text) to the knowledge base."""
+    """Upload a file (PDF, Excel, or text) to the knowledge base.
+
+    Uses the multi-engine document parser:
+      - PDF: pymupdf4llm (fast) > Docling (precise) > PyPDF2 (fallback)
+      - Excel: pandas → Markdown tables
+      - Text: direct UTF-8 decode
+    """
+    from tools.document_parser import parse_file, ParseEngine, available_engines
+
     content_bytes = await file.read()
     filename = file.filename or "untitled"
 
-    # Determine doc_type and extract text
-    if filename.lower().endswith(".pdf"):
-        try:
-            from PyPDF2 import PdfReader
-            import io
-            reader = PdfReader(io.BytesIO(content_bytes))
-            pages_text = [page.extract_text() or "" for page in reader.pages]
-            content_text = "\n\n".join(pages_text)
-        except Exception as e:
-            raise HTTPException(status_code=400, detail=f"Failed to parse PDF: {e}")
-        doc_type = "pdf"
-    else:
-        # Assume text-based file
-        try:
-            content_text = content_bytes.decode("utf-8")
-        except UnicodeDecodeError:
-            content_text = content_bytes.decode("utf-8", errors="replace")
-        doc_type = "report"
+    # Select engine
+    parse_engine = ParseEngine.AUTO
+    if engine and engine in ParseEngine.__members__:
+        parse_engine = ParseEngine(engine)
 
+    try:
+        result = parse_file(content_bytes, filename, engine=parse_engine)
+    except ImportError as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"No parser available: {e}. Installed: {available_engines()}",
+        )
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Failed to parse file: {e}")
+
+    content_text = result.content
     if not content_text.strip():
         raise HTTPException(status_code=400, detail="Extracted content is empty")
+
+    # Determine doc_type from file extension
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+    doc_type_map = {"pdf": "pdf", "xlsx": "report", "xls": "report", "csv": "report"}
+    doc_type = doc_type_map.get(ext, "report")
 
     effective_title = title or filename
     tag_list = json.loads(tags) if tags else None
 
     retriever = _get_retriever()
-    result = retriever.save_document(
+    save_result = retriever.save_document(
         title=effective_title,
         doc_type=doc_type,
         content_text=content_text,
@@ -720,7 +731,14 @@ async def upload_knowledge_file(
         company=company,
         tags=tag_list,
     )
-    return result
+
+    # Include parser metadata in response
+    save_result["parser"] = {
+        "engine": result.engine_used,
+        "pages": result.page_count,
+        "warnings": result.warnings,
+    }
+    return save_result
 
 
 @app.delete("/api/knowledge/{doc_id}")
