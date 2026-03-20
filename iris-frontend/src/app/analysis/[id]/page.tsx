@@ -8,6 +8,7 @@ import { PhaseIndicator } from "@/components/PhaseIndicator";
 import { StreamingTimeline } from "@/components/StreamingTimeline";
 import { ReportPanel } from "@/components/AIReasoningArea";
 import { SteeringInput } from "@/components/SteeringInput";
+import { ResumeBar } from "@/components/ResumeBar";
 import { PendingQuestionCard } from "@/components/PendingQuestionCard";
 import { PanelTabBar } from "@/components/PanelTabBar";
 import { DataPanel } from "@/components/DataPanel";
@@ -25,7 +26,7 @@ export default function AnalysisPage() {
   const pendingQuestion = useAnalysisStore((s) => s.pendingQuestion);
 
   useEffect(() => {
-    useAnalysisStore.setState({ analysisId: id, pageState: "RUNNING" });
+    useAnalysisStore.setState({ analysisId: id, pageState: "IDLE" });
   }, [id]);
 
   useAnalysisStream(id);
@@ -103,13 +104,15 @@ export default function AnalysisPage() {
         </div>
       </div>
 
-      {/* Bottom: Steering Input / Pending Question */}
+      {/* Bottom: Steering Input / Resume Bar / Pending Question */}
       <div className="shrink-0 border-t border-[var(--iris-border)] p-[6px_10px] bg-[var(--iris-bg)]">
         {pageState === "WAITING" && pendingQuestion ? (
           <PendingQuestionCard />
-        ) : !isReplay ? (
+        ) : isReplay ? (
+          <ResumeBar />
+        ) : (
           <SteeringInput />
-        ) : null}
+        )}
       </div>
     </div>
   );

@@ -1,4 +1,4 @@
-import json
+﻿import json
 import math
 import sqlite3
 import uuid
@@ -144,12 +144,22 @@ class SQLiteRetriever(EvidenceRetriever):
                     content_text TEXT NOT NULL,
                     tags TEXT DEFAULT '[]',
                     company TEXT,
+                    source_type TEXT DEFAULT 'manual',
+                    source_name TEXT,
+                    published_at TEXT,
+                    canonical_url TEXT,
+                    url_hash TEXT,
+                    content_hash TEXT,
+                    ai_metadata_json TEXT DEFAULT '{}',
+                    extraction_meta_json TEXT DEFAULT '{}',
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL
                 );
                 CREATE INDEX IF NOT EXISTS idx_kdocs_company ON knowledge_documents(company);
                 CREATE INDEX IF NOT EXISTS idx_kdocs_doc_type ON knowledge_documents(doc_type);
-
+                CREATE INDEX IF NOT EXISTS idx_kdocs_canonical_url ON knowledge_documents(canonical_url);
+                CREATE INDEX IF NOT EXISTS idx_kdocs_url_hash ON knowledge_documents(url_hash);
+                CREATE INDEX IF NOT EXISTS idx_kdocs_content_hash ON knowledge_documents(content_hash);
                 CREATE TABLE IF NOT EXISTS knowledge_chunks (
                     id TEXT PRIMARY KEY,
                     document_id TEXT NOT NULL,
@@ -178,6 +188,34 @@ class SQLiteRetriever(EvidenceRetriever):
                 conn.execute("ALTER TABLE embeddings ADD COLUMN embedding_model TEXT DEFAULT 'text-embedding-3-small'")
             except Exception:
                 pass
+            # Idempotent migration: add URL-ingest metadata columns for knowledge_documents
+            migrations = [
+                "ALTER TABLE knowledge_documents ADD COLUMN source_type TEXT DEFAULT 'manual'",
+                "ALTER TABLE knowledge_documents ADD COLUMN source_name TEXT",
+                "ALTER TABLE knowledge_documents ADD COLUMN published_at TEXT",
+                "ALTER TABLE knowledge_documents ADD COLUMN canonical_url TEXT",
+                "ALTER TABLE knowledge_documents ADD COLUMN url_hash TEXT",
+                "ALTER TABLE knowledge_documents ADD COLUMN content_hash TEXT",
+                "ALTER TABLE knowledge_documents ADD COLUMN ai_metadata_json TEXT DEFAULT '{}'",
+                "ALTER TABLE knowledge_documents ADD COLUMN extraction_meta_json TEXT DEFAULT '{}'",
+            ]
+            for migration_sql in migrations:
+                try:
+                    conn.execute(migration_sql)
+                except Exception:
+                    pass
+            try:
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_kdocs_canonical_url ON knowledge_documents(canonical_url)")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_kdocs_url_hash ON knowledge_documents(url_hash)")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_kdocs_content_hash ON knowledge_documents(content_hash)")
+            except Exception:
+                pass
+            # Idempotent migration: add conversation persistence columns
+            for col, col_type in [("messages_json", "TEXT"), ("turn_count", "INTEGER DEFAULT 1")]:
+                try:
+                    conn.execute(f"ALTER TABLE analysis_runs ADD COLUMN {col} {col_type}")
+                except Exception:
+                    pass
 
     def save_observation(self, obs: Observation) -> None:
         with self._conn() as conn:
@@ -345,15 +383,19 @@ class SQLiteRetriever(EvidenceRetriever):
         recommendation: str | None = None,
         tokens_in: int = 0,
         tokens_out: int = 0,
+        messages_json: str | None = None,
+        turn_count: int = 1,
     ) -> None:
         with self._conn() as conn:
             conn.execute(
                 """INSERT OR REPLACE INTO analysis_runs
                    (id, query, ticker, status, reasoning_text, thinking_text,
-                    timeline_json, panels_json, recommendation, tokens_in, tokens_out)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    timeline_json, panels_json, recommendation, tokens_in, tokens_out,
+                    messages_json, turn_count)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (id, query, ticker, status, reasoning_text, thinking_text,
-                 timeline_json, panels_json, recommendation, tokens_in, tokens_out),
+                 timeline_json, panels_json, recommendation, tokens_in, tokens_out,
+                 messages_json, turn_count),
             )
 
     def get_analysis_run(self, run_id: str) -> dict | None:
@@ -540,19 +582,32 @@ class SQLiteRetriever(EvidenceRetriever):
         source_path: str = None,
         company: str = None,
         tags: list[str] = None,
+        source_type: str = "manual",
+        source_name: str = None,
+        published_at: str = None,
+        canonical_url: str = None,
+        url_hash: str = None,
+        content_hash: str = None,
+        ai_metadata: dict | None = None,
+        extraction_meta: dict | None = None,
     ) -> dict:
         """Save a document, chunk it, embed chunks. Returns document metadata."""
         doc_id = f"kdoc_{uuid.uuid4().hex[:8]}"
         now = datetime.now(timezone.utc).isoformat()
         tags_json = json.dumps(tags or [])
-
+        ai_metadata_json = json.dumps(ai_metadata or {}, ensure_ascii=False)
+        extraction_meta_json = json.dumps(extraction_meta or {}, ensure_ascii=False)
         with self._conn() as conn:
             conn.execute(
-                "INSERT INTO knowledge_documents (id, title, doc_type, source_path, content_text, tags, company, created_at, updated_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (doc_id, title, doc_type, source_path, content_text, tags_json, company, now, now),
+                "INSERT INTO knowledge_documents "
+                "(id, title, doc_type, source_path, content_text, tags, company, source_type, source_name, "
+                "published_at, canonical_url, url_hash, content_hash, ai_metadata_json, extraction_meta_json, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    doc_id, title, doc_type, source_path, content_text, tags_json, company, source_type, source_name,
+                    published_at, canonical_url, url_hash, content_hash, ai_metadata_json, extraction_meta_json, now, now,
+                ),
             )
-
         # Chunk and embed
         chunks = chunk_text(content_text)
         chunk_ids = []
@@ -566,7 +621,6 @@ class SQLiteRetriever(EvidenceRetriever):
                 model_id = self.embedder.model_id
             except Exception:
                 pass  # best-effort embedding
-
             with self._conn() as conn:
                 conn.execute(
                     "INSERT INTO knowledge_chunks (id, document_id, chunk_index, content, char_offset_start, char_offset_end, embedding, embedding_model, created_at) "
@@ -576,20 +630,26 @@ class SQLiteRetriever(EvidenceRetriever):
                      embedding_json, model_id, now),
                 )
             chunk_ids.append(chunk_id)
-
         return {
             "id": doc_id,
             "title": title,
             "doc_type": doc_type,
             "chunk_count": len(chunk_ids),
             "company": company,
+            "source_type": source_type,
+            "source_name": source_name,
+            "published_at": published_at,
+            "canonical_url": canonical_url,
         }
-
     def list_documents(self, company: str = None, doc_type: str = None) -> list[dict]:
         """List knowledge documents with metadata."""
         with self._conn() as conn:
             conn.row_factory = sqlite3.Row
-            query = "SELECT id, title, doc_type, source_path, tags, company, created_at, updated_at FROM knowledge_documents"
+            query = (
+                "SELECT id, title, doc_type, source_path, tags, company, source_type, source_name, "
+                "published_at, canonical_url, url_hash, content_hash, ai_metadata_json, extraction_meta_json, "
+                "created_at, updated_at FROM knowledge_documents"
+            )
             conditions = []
             params = []
             if company:
@@ -602,11 +662,9 @@ class SQLiteRetriever(EvidenceRetriever):
                 query += " WHERE " + " AND ".join(conditions)
             query += " ORDER BY created_at DESC"
             rows = conn.execute(query, params).fetchall()
-
         results = []
         for row in rows:
-            d = dict(row)
-            d["tags"] = json.loads(d.get("tags") or "[]")
+            d = self._hydrate_document_row(dict(row))
             # Get chunk count
             with self._conn() as conn:
                 count = conn.execute(
@@ -616,7 +674,6 @@ class SQLiteRetriever(EvidenceRetriever):
             d["chunk_count"] = count
             results.append(d)
         return results
-
     def get_document(self, doc_id: str) -> dict | None:
         """Get full document with content and chunk count."""
         with self._conn() as conn:
@@ -626,8 +683,7 @@ class SQLiteRetriever(EvidenceRetriever):
             ).fetchone()
         if not row:
             return None
-        d = dict(row)
-        d["tags"] = json.loads(d.get("tags") or "[]")
+        d = self._hydrate_document_row(dict(row))
         with self._conn() as conn:
             count = conn.execute(
                 "SELECT COUNT(*) FROM knowledge_chunks WHERE document_id = ?",
@@ -635,7 +691,36 @@ class SQLiteRetriever(EvidenceRetriever):
             ).fetchone()[0]
         d["chunk_count"] = count
         return d
-
+    def find_document_by_hashes(
+        self,
+        *,
+        url_hash: str | None = None,
+        content_hash: str | None = None,
+    ) -> dict | None:
+        """Find a potentially duplicate document by URL hash or content hash."""
+        with self._conn() as conn:
+            conn.row_factory = sqlite3.Row
+            row = None
+            if url_hash:
+                row = conn.execute(
+                    "SELECT * FROM knowledge_documents WHERE url_hash = ? ORDER BY created_at DESC LIMIT 1",
+                    (url_hash,),
+                ).fetchone()
+            if row is None and content_hash:
+                row = conn.execute(
+                    "SELECT * FROM knowledge_documents WHERE content_hash = ? ORDER BY created_at DESC LIMIT 1",
+                    (content_hash,),
+                ).fetchone()
+        if row is None:
+            return None
+        d = self._hydrate_document_row(dict(row))
+        with self._conn() as conn:
+            count = conn.execute(
+                "SELECT COUNT(*) FROM knowledge_chunks WHERE document_id = ?",
+                (d["id"],),
+            ).fetchone()[0]
+        d["chunk_count"] = count
+        return d
     def delete_document(self, doc_id: str) -> bool:
         """Delete document and its chunks. Returns True if found."""
         with self._conn() as conn:
@@ -647,3 +732,13 @@ class SQLiteRetriever(EvidenceRetriever):
             conn.execute("DELETE FROM knowledge_chunks WHERE document_id = ?", (doc_id,))
             conn.execute("DELETE FROM knowledge_documents WHERE id = ?", (doc_id,))
         return True
+    @staticmethod
+    def _hydrate_document_row(doc: dict) -> dict:
+        """Convert serialized JSON fields to Python objects."""
+        doc["tags"] = json.loads(doc.get("tags") or "[]")
+        doc["ai_metadata_json"] = json.loads(doc.get("ai_metadata_json") or "{}")
+        doc["extraction_meta_json"] = json.loads(doc.get("extraction_meta_json") or "{}")
+        return doc
+
+
+

@@ -33,9 +33,12 @@ interface AnalysisStore {
   compsPanel: CompsPanelState;
   memoryPanel: MemoryPanelState;
 
+  resumable: boolean;
+
   startAnalysis: (query: string, contextDocs?: string[]) => Promise<void>;
   sendSteering: (message: string) => Promise<void>;
   continueAnalysis: (message: string) => Promise<void>;
+  resumeAnalysis: (message: string) => Promise<void>;
   respondToInput: (response: string) => Promise<void>;
   setActiveTab: (tab: ActiveTab) => void;
   handleSSEEvent: (event: SSEEvent) => void;
@@ -90,6 +93,7 @@ export const useAnalysisStore = create<AnalysisStore>((set, get) => ({
   pendingQuestion: null,
   activeTab: "report",
   lastUserTabSwitch: 0,
+  resumable: false,
   dataPanel: initialDataPanel,
   modelPanel: initialModelPanel,
   compsPanel: initialCompsPanel,
@@ -163,6 +167,42 @@ export const useAnalysisStore = create<AnalysisStore>((set, get) => ({
       };});
     } catch (error) {
       console.error("Failed to continue analysis:", error);
+    }
+  },
+
+  resumeAnalysis: async (message: string) => {
+    const { analysisId } = get();
+    if (!analysisId) return;
+    try {
+      const response = await api.resumeAnalysis(analysisId, message);
+      set((state) => {
+        const newRaw = state._rawTextBuffer + `\n\n---\n\n**> ${message}**\n\n`;
+        const { reasoning, thinking } = _splitThinkingBlocks(newRaw);
+        return {
+          pageState: "RUNNING",
+          isReplay: false,
+          resumable: true,
+          currentPhase: "gather",
+          analysisId: response.analysisId,
+          _rawTextBuffer: newRaw,
+          reasoningText: reasoning,
+          thinkingText: thinking,
+          timeline: [
+            ...state.timeline,
+            {
+              id: `user-resume-${Date.now()}`,
+              timestamp: Date.now(),
+              tool: "user_continue",
+              message: message,
+              phase: "gather" as const,
+              color: "purple" as const,
+              status: "complete" as const,
+            },
+          ],
+        };
+      });
+    } catch (error) {
+      console.error("Failed to resume analysis:", error);
     }
   },
 
@@ -403,14 +443,20 @@ export const useAnalysisStore = create<AnalysisStore>((set, get) => ({
   },
 
   loadSnapshot: (snapshot) => {
+    const timeline = [...(snapshot.timeline || [])].sort(
+      (a, b) => (a.timestamp || 0) - (b.timestamp || 0)
+    );
     set({
       pageState: "COMPLETE",
       isReplay: true,
+      resumable: snapshot.resumable ?? false,
       analysisId: snapshot.id,
       analysisQuery: snapshot.query || "",
       reasoningText: snapshot.reasoning_text || "",
       thinkingText: snapshot.thinking_text || "",
-      timeline: snapshot.timeline || [],
+      _rawTextBuffer: (snapshot.reasoning_text || "") +
+        (snapshot.thinking_text ? `\n<thinking>\n${snapshot.thinking_text}\n</thinking>` : ""),
+      timeline,
       dataPanel: snapshot.panels?.data || initialDataPanel,
       modelPanel: snapshot.panels?.model || initialModelPanel,
       compsPanel: snapshot.panels?.comps || initialCompsPanel,
@@ -422,6 +468,7 @@ export const useAnalysisStore = create<AnalysisStore>((set, get) => ({
     set({
       pageState: "IDLE",
       isReplay: false,
+      resumable: false,
       analysisId: null,
       timeline: [],
       reasoningText: "",

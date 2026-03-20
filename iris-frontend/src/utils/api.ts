@@ -135,16 +135,29 @@ export async function continueAnalysis(
   });
 }
 
-export async function probeSession(analysisId: string): Promise<{ live: boolean; query?: string }> {
+export async function probeSession(
+  analysisId: string
+): Promise<{ live: boolean; continuable: boolean; query: string; turnCount: number }> {
   try {
     const res = await fetch(`${BASE_URL}/api/analyze/${analysisId}/status`);
-    if (res.status !== 200) return { live: false };
+    if (res.status !== 200) return { live: false, continuable: false, query: "", turnCount: 0 };
     const data = await res.json();
     const live = data.exists === true && (data.status === "running" || data.status === "waiting");
-    return { live, query: data.query || "" };
+    const continuable = data.continuable === true || live;
+    return { live, continuable, query: data.query || "", turnCount: data.turn_count || 0 };
   } catch {
-    return { live: false };
+    return { live: false, continuable: false, query: "", turnCount: 0 };
   }
+}
+
+export async function resumeAnalysis(
+  runId: string,
+  message: string
+): Promise<{ analysisId: string; streamUrl: string; status: string; turn: number }> {
+  return request(`/api/analyze/${encodeURIComponent(runId)}/resume`, {
+    method: "POST",
+    body: JSON.stringify({ message }),
+  });
 }
 
 // ── Knowledge API ─────────────────────────────────────────

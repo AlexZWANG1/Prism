@@ -96,11 +96,33 @@ export function useAnalysisStream(analysisId: string | null) {
     (async () => {
       const probe = await probeSession(analysisId);
       if (probe.live) {
-        if (probe.query) {
-          useAnalysisStore.setState({ analysisQuery: probe.query });
-        }
+        // Session is actively running/waiting — connect SSE for live updates
+        useAnalysisStore.setState({
+          pageState: "RUNNING",
+          analysisQuery: probe.query || "",
+        });
         connectSSE(analysisId);
+      } else if (probe.continuable) {
+        // Session alive in memory but idle — load snapshot data then mark as continuable
+        try {
+          const snapshot = await getHistoryDetail(analysisId);
+          loadSnapshot(snapshot);
+          // Override replay flags: session is alive, user can continue directly
+          useAnalysisStore.setState({
+            isReplay: false,
+            resumable: true,
+          });
+        } catch {
+          // Fallback: at least show as continuable
+          useAnalysisStore.setState({
+            pageState: "COMPLETE",
+            isReplay: false,
+            resumable: true,
+            analysisQuery: probe.query || "",
+          });
+        }
       } else {
+        // Session not in memory — load from DB as replay snapshot
         try {
           const snapshot = await getHistoryDetail(analysisId);
           loadSnapshot(snapshot);

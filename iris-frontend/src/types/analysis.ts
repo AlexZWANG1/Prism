@@ -165,6 +165,8 @@ export interface AnalysisSnapshot {
   };
   tokens_in: number;
   tokens_out: number;
+  resumable?: boolean;
+  turn_count?: number;
 }
 
 export interface HistoryItem {

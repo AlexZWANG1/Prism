@@ -419,8 +419,9 @@ class AnalysisSession:
         """
         reasoning, thinking, thinking_entries = self._split_thinking_blocks(self._raw_text)
 
-        # Merge thinking entries into the timeline
+        # Merge thinking entries into the timeline, sorted chronologically
         timeline = list(self.accumulated_timeline) + thinking_entries
+        timeline.sort(key=lambda e: e.get("timestamp", 0))
 
         return {
             "reasoning_text": reasoning,

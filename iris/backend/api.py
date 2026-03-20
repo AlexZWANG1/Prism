@@ -217,6 +217,14 @@ def _save_to_db(session: AnalysisSession, snap: dict, ticker: str | None, result
     # Extract recommendation from the final reasoning text
     rec = _extract_recommendation(reasoning_text)
 
+    # Serialize conversation messages for resumability
+    messages_json = None
+    try:
+        if hasattr(session.harness, '_messages') and session.harness._messages:
+            messages_json = json.dumps(session.harness._messages, ensure_ascii=False, default=str)
+    except Exception:
+        pass  # best-effort — don't block persistence
+
     # Save the full analysis run
     retriever.save_analysis_run(
         id=session.id,
@@ -230,6 +238,8 @@ def _save_to_db(session: AnalysisSession, snap: dict, ticker: str | None, result
         recommendation=rec,
         tokens_in=result.total_input_tokens,
         tokens_out=result.total_output_tokens,
+        messages_json=messages_json,
+        turn_count=session.turn_count + 1,
     )
 
 
@@ -362,7 +372,13 @@ async def session_status(analysis_id: str):
     session = get_session(analysis_id)
     if session is None:
         raise HTTPException(status_code=404, detail="Session not found")
-    return {"exists": True, "status": session.status, "query": session.query}
+    return {
+        "exists": True,
+        "status": session.status,
+        "query": session.query,
+        "continuable": session.status in ("idle", "complete", "error"),
+        "turn_count": session.turn_count,
+    }
 
 
 @app.post("/api/analyze/{analysis_id}/steer")
@@ -424,7 +440,7 @@ async def continue_analysis(analysis_id: str, req: SteerRequest):
             )
             # Save updated snapshot
             snap = session.snapshot()
-            ticker = _extract_ticker(snap.get("reasoning_text", ""), session)
+            ticker = _extract_ticker(session.query, session)
             _save_to_db(session, snap, ticker, result)
 
             session.events.put({
@@ -452,6 +468,126 @@ async def continue_analysis(analysis_id: str, req: SteerRequest):
     thread.start()
 
     return {"status": "continuing", "turn": session.turn_count}
+
+
+@app.post("/api/analyze/{run_id}/resume")
+async def resume_analysis(run_id: str, req: SteerRequest):
+    """Resume a conversation from DB history. Rehydrates the session if expired."""
+    # 1. If session is still alive in memory, delegate to /continue
+    session = get_session(run_id)
+    if session is not None:
+        if session.status == "running":
+            raise HTTPException(status_code=400, detail="Session is still running")
+        # Delegate to continue logic
+        return await continue_analysis(run_id, req)
+
+    # 2. Load from DB
+    retriever = _get_retriever()
+    run = retriever.get_analysis_run(run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail="Analysis run not found")
+
+    messages_json_str = run.get("messages_json")
+    if not messages_json_str:
+        raise HTTPException(
+            status_code=409,
+            detail="此对话无法恢复（缺少对话历史），请发起新分析",
+        )
+
+    # 3. Rehydrate: build a fresh harness and restore conversation state
+    from main import build_harness
+
+    harness, _retriever = build_harness(streaming=True)
+
+    try:
+        harness._messages = json.loads(messages_json_str)
+    except (json.JSONDecodeError, TypeError):
+        raise HTTPException(status_code=409, detail="对话历史数据损坏，请发起新分析")
+
+    session = create_session(harness, query=run.get("query", ""))
+    # Use the SAME id so DB row is updated in-place
+    session.id = run_id
+    session.turn_count = run.get("turn_count", 1)
+    session.status = "running"
+
+    # Restore accumulated state from DB snapshot
+    try:
+        session.accumulated_timeline = json.loads(run.get("timeline_json") or "[]")
+        # Reconstruct _raw_text with thinking tags so _split_thinking_blocks works correctly
+        reasoning = run.get("reasoning_text") or ""
+        thinking = run.get("thinking_text") or ""
+        session._raw_text = reasoning + (f"\n<thinking>\n{thinking}\n</thinking>" if thinking else "")
+        panels = json.loads(run.get("panels_json") or "{}")
+        for key in ("data", "model", "comps", "memory"):
+            if key in panels:
+                session.accumulated_frontend_panels[key] = panels[key]
+    except Exception:
+        pass  # best-effort restore
+
+    # Set up event callback
+    def on_event(event: HarnessEvent) -> None:
+        try:
+            sse = harness_event_to_sse(event)
+            if sse is not None:
+                session.events.put(sse)
+                session.touch()
+        except Exception:
+            pass
+        try:
+            session.accumulate_raw(event)
+        except Exception:
+            pass
+
+    harness.on_event = on_event
+
+    # Register user_input tool
+    bound_fn = functools.partial(request_user_input, session=session)
+    user_input_tool = Tool(bound_fn, REQUEST_USER_INPUT_SCHEMA)
+    harness.tool_registry[user_input_tool.name] = user_input_tool
+
+    register_session(session)
+
+    # 4. Run continuation in background thread
+    def _run_resume():
+        try:
+            result = harness.continue_run(
+                user_input=req.message,
+                on_event=on_event,
+            )
+            snap = session.snapshot()
+            ticker = _extract_ticker(session.query, session)
+            _save_to_db(session, snap, ticker, result)
+
+            session.events.put({
+                "event": "analysis_complete",
+                "data": {
+                    "ok": result.ok,
+                    "reply": result.reply,
+                    "error": result.error,
+                    "runId": result.run_id,
+                    "totalInputTokens": result.total_input_tokens,
+                    "totalOutputTokens": result.total_output_tokens,
+                    "toolLog": result.tool_log,
+                    "turn": session.turn_count,
+                },
+            })
+            session.status = "idle"
+        except Exception as e:
+            logger.exception(f"Resume failed: {e}")
+            session.events.put({"event": "error", "data": {"message": str(e)}})
+            session.status = "error"
+        finally:
+            session.events.put(None)
+
+    thread = threading.Thread(target=_run_resume, daemon=True)
+    thread.start()
+
+    return {
+        "analysisId": session.id,
+        "streamUrl": f"/api/analyze/{session.id}/stream",
+        "status": "resuming",
+        "turn": session.turn_count,
+    }
 
 
 # ── Memory endpoints ─────────────────────────────────────────
@@ -595,8 +731,12 @@ async def get_history_detail(run_id: str):
         raise HTTPException(status_code=404, detail="Analysis run not found")
     run["timeline"] = json.loads(run.get("timeline_json") or "[]")
     run["panels"] = json.loads(run.get("panels_json") or "{}")
-    del run["timeline_json"]
-    del run["panels_json"]
+    run["resumable"] = bool(run.get("messages_json"))
+    run["turn_count"] = run.get("turn_count", 1)
+    # Remove heavy/internal fields from response
+    run.pop("timeline_json", None)
+    run.pop("panels_json", None)
+    run.pop("messages_json", None)
     return run
 
 
@@ -769,11 +909,42 @@ _cleanup_thread: threading.Thread | None = None
 
 
 def _cleanup_loop():
-    """Remove sessions inactive for >30 minutes. Runs every 60 seconds."""
+    """Remove sessions inactive for >30 minutes. Runs every 60 seconds.
+    Saves conversation state before eviction so sessions can be resumed later."""
     while True:
         time.sleep(60)
         cutoff = datetime.now(timezone.utc) - timedelta(minutes=30)
         sessions = all_sessions()
         for sid, session in sessions.items():
             if session.last_activity < cutoff:
+                # Save final state before eviction (best-effort)
+                try:
+                    if hasattr(session.harness, '_messages') and session.harness._messages:
+                        snap = session.snapshot()
+                        ticker = _extract_ticker(session.query, session)
+                        reasoning_text = snap.get("reasoning_text", "")
+                        rec = _extract_recommendation(reasoning_text)
+                        messages_json = json.dumps(
+                            session.harness._messages, ensure_ascii=False, default=str
+                        )
+                        retriever = _get_retriever()
+                        retriever.save_analysis_run(
+                            id=session.id,
+                            query=session.query,
+                            ticker=ticker,
+                            status="complete",
+                            reasoning_text=reasoning_text,
+                            thinking_text=snap.get("thinking_text", ""),
+                            timeline_json=json.dumps(
+                                snap["timeline"], ensure_ascii=False, default=str
+                            ),
+                            panels_json=json.dumps(
+                                snap["panels"], ensure_ascii=False, default=str
+                            ),
+                            recommendation=rec,
+                            messages_json=messages_json,
+                            turn_count=session.turn_count + 1,
+                        )
+                except Exception:
+                    pass
                 remove_session(sid)
