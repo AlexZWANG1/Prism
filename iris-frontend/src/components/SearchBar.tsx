@@ -88,6 +88,8 @@ export function SearchBar() {
         </svg>
 
         <input
+          id="analysis-query"
+          name="analysis_query"
           type="text"
           value={query}
           onChange={(e) => setQuery(e.target.value)}

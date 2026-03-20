@@ -51,9 +51,21 @@ export default function HomePage() {
   useEffect(() => {
     async function load() {
       try {
-        const [wl, hist] = await Promise.all([getWatchlist(), getHistory()]);
-        setWatchlist(wl);
-        setHistory(hist.items);
+        const [wlRes, histRes] = await Promise.allSettled([
+          getWatchlist(),
+          getHistory(),
+        ]);
+
+        if (wlRes.status === "fulfilled") {
+          setWatchlist(wlRes.value);
+        }
+        if (histRes.status === "fulfilled") {
+          setHistory(histRes.value.items);
+        }
+
+        if (wlRes.status === "rejected" && histRes.status === "rejected") {
+          setError("无法加载数据");
+        }
       } catch {
         setError("无法加载数据");
       } finally {

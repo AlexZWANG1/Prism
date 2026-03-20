@@ -15,6 +15,7 @@ import threading
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Optional
 
 from contextlib import asynccontextmanager
@@ -56,12 +57,52 @@ def _get_retriever() -> SQLiteRetriever:
 def _extract_ticker(query: str, session: AnalysisSession) -> str | None:
     """Best-effort ticker extraction from query and tool results."""
     tool_results = session.accumulated_panels
-    for tool_name in ["yf_quote", "build_dcf", "fmp_get_financials"]:
+    # Prefer market-data tools; build_dcf may be invoked with placeholder strings
+    # for generic/meta questions and can create false ticker pollution.
+    for tool_name in ["yf_quote", "fmp_get_financials"]:
         result = tool_results.get(tool_name, {})
         if isinstance(result, dict) and result.get("ticker"):
             return result["ticker"].upper()
-    match = re.search(r'\b([A-Z]{1,5})\b', query)
-    return match.group(1) if match else None
+
+    # Fallback: parse raw query symbols, but exclude common finance acronyms.
+    blacklist = {
+        "DCF", "FCF", "EPS", "EBIT", "EBITDA", "EV", "PE", "PBR", "PB",
+        "PS", "ROE", "ROIC", "CAGR", "FY", "TTM", "WACC",
+    }
+    for candidate in re.findall(r"\b([A-Z]{1,5})\b", query or ""):
+        if candidate not in blacklist:
+            return candidate
+    return None
+
+
+_META_QUERY_PATTERNS = [
+    re.compile(r"^(hi|hello|hey)[!?.\s]*$", re.IGNORECASE),
+    re.compile(r"^你好[呀啊吗嘛呢]?[!！。？?\s]*$"),
+    re.compile(r"^(您好|嗨|哈喽|在吗|在不在|早上好|下午好|晚上好)[!！。？?\s]*$"),
+    re.compile(r"^(who are you|what can you do)[!?.\s]*$", re.IGNORECASE),
+    re.compile(r"^(你是谁|你能做什么|你会什么|介绍一下你自己|自我介绍)[!！。？?\s]*$"),
+]
+
+
+def _is_meta_query(query: str) -> bool:
+    q = (query or "").strip()
+    if not q:
+        return False
+    return any(p.fullmatch(q) for p in _META_QUERY_PATTERNS)
+
+
+def _build_meta_reply(query: str) -> str:
+    q = (query or "").strip().lower()
+    if "who are you" in q or "你是谁" in query or "自我介绍" in query:
+        return (
+            "我是 IRIS，一个面向投研任务的分析助手。"
+            "你可以直接说“分析 NVDA”“比较 TSLA 和 AMD”“复盘昨天的策略信号”，"
+            "我会按分析流程给出结论、依据和关键数据。"
+        )
+    return (
+        "你好，我可以帮你做股票/行业分析、估值、财报解读和多轮追问。"
+        "如果你给我具体标的或问题（例如“分析一下英伟达”），我会直接开始。"
+    )
 
 
 # ── App setup ─────────────────────────────────────────────────
@@ -316,6 +357,38 @@ async def start_analysis(req: AnalyzeRequest):
     # Run harness in background thread
     def _run():
         try:
+            if _is_meta_query(req.query):
+                reply = _build_meta_reply(req.query)
+                session._raw_text = reply
+                session.events.put({
+                    "event": "system",
+                    "data": {"message": "已识别为问候/能力咨询，使用轻量回复模式"},
+                })
+                result = SimpleNamespace(
+                    ok=True,
+                    reply=reply,
+                    error=None,
+                    total_input_tokens=0,
+                    total_output_tokens=0,
+                    tool_log=[],
+                )
+                snap = session.snapshot()
+                _save_to_db(session, snap, ticker=None, result=result)
+                session.events.put({
+                    "event": "analysis_complete",
+                    "data": {
+                        "ok": True,
+                        "reply": reply,
+                        "error": None,
+                        "runId": None,
+                        "totalInputTokens": 0,
+                        "totalOutputTokens": 0,
+                        "toolLog": [],
+                    },
+                })
+                session.status = "idle"
+                return
+
             result = harness.run(req.query, context_docs=req.contextDocs)
 
             # --- Persist to DB ---

@@ -71,6 +71,20 @@ class EvidenceRetriever(ABC):
 
 
 class SQLiteRetriever(EvidenceRetriever):
+    # Synthetic rows produced by tests/mocks should not pollute user-facing history.
+    _NON_TEST_RUNS_WHERE = (
+        "NOT (query LIKE 'Analyze %' AND COALESCE(reasoning_text, '') = 'Test analysis complete')"
+    )
+    # Only include tickers from runs that look like real analysis requests.
+    _ANALYSIS_INTENT_WHERE = (
+        "("
+        "query LIKE '%分析%' OR query LIKE '%估值%' OR query LIKE '%财报%' OR query LIKE '%复盘%' "
+        "OR LOWER(COALESCE(query, '')) LIKE '%analysis%' "
+        "OR LOWER(COALESCE(query, '')) LIKE '%valuation%' "
+        "OR LOWER(COALESCE(query, '')) LIKE '%research%' "
+        "OR UPPER(COALESCE(query, '')) GLOB '*[A-Z]*'"
+        ")"
+    )
     def __init__(self, db_path: str, usage_tracker: Callable[..., None] | None = None):
         self.db_path = db_path
         self._usage_tracker = usage_tracker
@@ -425,22 +439,27 @@ class SQLiteRetriever(EvidenceRetriever):
     def list_analysis_runs(
         self, *, ticker: str | None = None, limit: int = 30, offset: int = 0
     ) -> dict:
+        where_base = self._NON_TEST_RUNS_WHERE
         with self._conn() as conn:
             conn.row_factory = sqlite3.Row
             if ticker:
                 total = conn.execute(
-                    "SELECT COUNT(*) FROM analysis_runs WHERE UPPER(ticker) = UPPER(?)",
-                    (ticker,),
+                    f"SELECT COUNT(*) FROM analysis_runs WHERE {where_base} AND UPPER(ticker) = UPPER(?)",
+                    (ticker,)
                 ).fetchone()[0]
                 rows = conn.execute(
-                    "SELECT * FROM analysis_runs WHERE UPPER(ticker) = UPPER(?) ORDER BY created_at DESC, rowid DESC LIMIT ? OFFSET ?",
-                    (ticker, limit, offset),
+                    f"SELECT * FROM analysis_runs WHERE {where_base} AND UPPER(ticker) = UPPER(?) "
+                    "ORDER BY created_at DESC, rowid DESC LIMIT ? OFFSET ?",
+                    (ticker, limit, offset)
                 ).fetchall()
             else:
-                total = conn.execute("SELECT COUNT(*) FROM analysis_runs").fetchone()[0]
+                total = conn.execute(
+                    f"SELECT COUNT(*) FROM analysis_runs WHERE {where_base}"
+                ).fetchone()[0]
                 rows = conn.execute(
-                    "SELECT * FROM analysis_runs ORDER BY created_at DESC, rowid DESC LIMIT ? OFFSET ?",
-                    (limit, offset),
+                    f"SELECT * FROM analysis_runs WHERE {where_base} "
+                    "ORDER BY created_at DESC, rowid DESC LIMIT ? OFFSET ?",
+                    (limit, offset)
                 ).fetchall()
         return {
             "items": [dict(r) for r in rows],
@@ -491,9 +510,19 @@ class SQLiteRetriever(EvidenceRetriever):
         return dict(row) if row else None
 
     def get_tracked_tickers(self) -> list[str]:
+        where_base = self._NON_TEST_RUNS_WHERE
+        where_intent = self._ANALYSIS_INTENT_WHERE
         with self._conn() as conn:
             rows = conn.execute(
-                "SELECT DISTINCT UPPER(ticker) AS ticker FROM analysis_runs WHERE ticker IS NOT NULL ORDER BY ticker"
+                "SELECT DISTINCT UPPER(ticker) AS ticker "
+                "FROM analysis_runs "
+                f"WHERE {where_base} "
+                "AND ticker IS NOT NULL "
+                "AND TRIM(ticker) != '' "
+                "AND LENGTH(TRIM(ticker)) BETWEEN 1 AND 5 "
+                "AND UPPER(ticker) = ticker "
+                f"AND {where_intent} "
+                "ORDER BY ticker"
             ).fetchall()
         return [r[0] for r in rows]
 

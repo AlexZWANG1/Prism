@@ -44,8 +44,11 @@ export function useAnalysisStream(analysisId: string | null) {
         eventSourceRef.current = null;
       }
 
-      const baseUrl = process.env.NEXT_PUBLIC_API_URL || "";
-      const es = new EventSource(`${baseUrl}/api/analyze/${id}/stream`);
+      const baseUrl = (process.env.NEXT_PUBLIC_API_URL || "").trim().replace(/\/+$/, "");
+      const streamUrl = baseUrl
+        ? `${baseUrl}/api/analyze/${id}/stream`
+        : `/api/analyze/${id}/stream`;
+      const es = new EventSource(streamUrl);
       eventSourceRef.current = es;
 
       for (const eventType of SSE_EVENT_TYPES) {

@@ -7,13 +7,17 @@ import type {
 import type { WatchlistItem, HistoryListResponse, AnalysisSnapshot } from "@/types/analysis";
 import type { MemoryTree, MemoryFileContent } from "@/types/memory";
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "";
+const BASE_URL = (process.env.NEXT_PUBLIC_API_URL || "").trim().replace(/\/+$/, "");
+
+function withBase(path: string): string {
+  return BASE_URL ? `${BASE_URL}${path}` : path;
+}
 
 async function request<T>(
   path: string,
   options?: RequestInit
 ): Promise<T> {
-  const res = await fetch(`${BASE_URL}${path}`, {
+  const res = await fetch(withBase(path), {
     headers: {
       "Content-Type": "application/json",
       ...options?.headers,
@@ -108,7 +112,7 @@ export async function deleteMemoryFile(
 }
 
 export function createAnalysisEventSource(analysisId: string): EventSource {
-  return new EventSource(`${BASE_URL}/api/analyze/${analysisId}/stream`);
+  return new EventSource(withBase(`/api/analyze/${analysisId}/stream`));
 }
 
 export async function getHistory(
@@ -139,7 +143,7 @@ export async function probeSession(
   analysisId: string
 ): Promise<{ live: boolean; continuable: boolean; query: string; turnCount: number }> {
   try {
-    const res = await fetch(`${BASE_URL}/api/analyze/${analysisId}/status`);
+    const res = await fetch(withBase(`/api/analyze/${analysisId}/status`));
     if (res.status !== 200) return { live: false, continuable: false, query: "", turnCount: 0 };
     const data = await res.json();
     const live = data.exists === true && (data.status === "running" || data.status === "waiting");
@@ -220,7 +224,7 @@ export async function uploadKnowledgeFile(
   if (opts?.company) formData.append("company", opts.company);
   if (opts?.tags) formData.append("tags", JSON.stringify(opts.tags));
 
-  const res = await fetch(`${BASE_URL}/api/knowledge/upload-file`, {
+  const res = await fetch(withBase("/api/knowledge/upload-file"), {
     method: "POST",
     body: formData,
   });

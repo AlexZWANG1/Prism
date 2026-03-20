@@ -35,15 +35,18 @@ function extractToolHint(thinkingText: string): string | null {
  */
 function interleaveThinking(
   toolEvents: TimelineEvent[],
-  reasoningText: string
+  rawTextBuffer: string
 ): TimelineEvent[] {
-  if (!reasoningText) return toolEvents;
+  if (!rawTextBuffer) return toolEvents;
+  // Replay snapshots already include parsed thinking entries from backend.
+  // Only synthesize client-side thinking entries for live runs.
+  if (toolEvents.some((ev) => ev.tool === "thinking")) return toolEvents;
 
   // Extract all thinking blocks
   const thinkingBlocks: { text: string; toolHint: string | null }[] = [];
   const re = /<thinking>([\s\S]*?)<\/thinking>/g;
   let match;
-  while ((match = re.exec(reasoningText)) !== null) {
+  while ((match = re.exec(rawTextBuffer)) !== null) {
     const text = match[1].trim();
     thinkingBlocks.push({ text, toolHint: extractToolHint(text) });
   }
@@ -119,13 +122,13 @@ function interleaveThinking(
 
 export function StreamingTimeline() {
   const timeline = useAnalysisStore((s) => s.timeline);
-  const reasoningText = useAnalysisStore((s) => s.reasoningText);
+  const rawTextBuffer = useAnalysisStore((s) => s._rawTextBuffer);
   const pageState = useAnalysisStore((s) => s.pageState);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const enrichedTimeline = useMemo(
-    () => interleaveThinking(timeline, reasoningText),
-    [timeline, reasoningText]
+    () => interleaveThinking(timeline, rawTextBuffer),
+    [timeline, rawTextBuffer]
   );
 
   useEffect(() => {
