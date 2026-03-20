@@ -40,6 +40,27 @@ export function TimelineItem({ event, isLast }: TimelineItemProps) {
     return <ThinkingItem event={event} />;
   }
 
+  // User continuation message — render as a turn separator
+  if (event.tool === "user_continue" || event.tool === "user_steering") {
+    return (
+      <div
+        style={{
+          padding: "6px 0",
+          marginTop: 4,
+          marginBottom: 4,
+          borderTop: event.tool === "user_continue" ? "1px solid var(--iris-border)" : "none",
+        }}
+      >
+        <span
+          className="font-mono"
+          style={{ fontSize: 12, color: "var(--iris-accent)", fontWeight: 500 }}
+        >
+          &gt; {event.message}
+        </span>
+      </div>
+    );
+  }
+
   const dotColor = phaseColorMap[event.phase] || "var(--iris-text-muted)";
   const isRunning = event.status === "running";
   const isError = event.status === "error";

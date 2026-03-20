@@ -138,8 +138,29 @@ export const useAnalysisStore = create<AnalysisStore>((set, get) => ({
     if (!analysisId) return;
     try {
       await api.continueAnalysis(analysisId, message);
-      // Don't reset panels/timeline — append to existing
-      set({ pageState: "RUNNING" });
+      // Add user message to timeline + insert turn marker in text buffer
+      set((state) => {
+        const newRaw = state._rawTextBuffer + `\n\n---\n\n**> ${message}**\n\n`;
+        const { reasoning, thinking } = _splitThinkingBlocks(newRaw);
+        return {
+        pageState: "RUNNING",
+        currentPhase: "gather",
+        _rawTextBuffer: newRaw,
+        reasoningText: reasoning,
+        thinkingText: thinking,
+        timeline: [
+          ...state.timeline,
+          {
+            id: `user-continue-${Date.now()}`,
+            timestamp: Date.now(),
+            tool: "user_continue",
+            message: message,
+            phase: "gather" as const,
+            color: "purple" as const,
+            status: "complete" as const,
+          },
+        ],
+      };});
     } catch (error) {
       console.error("Failed to continue analysis:", error);
     }
