@@ -246,3 +246,53 @@ def test_sse_bridge_skips_internal():
         event = HarnessEvent(type=event_type, data={})
         sse = harness_event_to_sse(event)
         assert sse is None, f"{event_type} should be skipped but got {sse}"
+
+
+# ── Knowledge URL ingest endpoint tests ──────────────────────
+
+def test_upload_knowledge_url_ingested(client, monkeypatch):
+    monkeypatch.setattr(
+        "backend.api.ingest_url_document",
+        lambda **kwargs: {
+            "status": "ingested",
+            "document": {"id": "kdoc_abc", "title": "Imported"},
+        },
+    )
+
+    resp = client.post("/api/knowledge/upload-url", json={"url": "https://example.com"})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["id"] == "kdoc_abc"
+    assert data["ingest_status"] == "ingested"
+
+
+def test_import_knowledge_url_duplicate(client, monkeypatch):
+    monkeypatch.setattr(
+        "backend.api.ingest_url_document",
+        lambda **kwargs: {
+            "status": "duplicate",
+            "duplicate_of": "kdoc_old",
+            "document": {"id": "kdoc_old", "title": "Already Exists"},
+        },
+    )
+
+    resp = client.post("/api/knowledge/import-url", json={"url": "https://example.com"})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["status"] == "duplicate"
+    assert data["duplicate_of"] == "kdoc_old"
+    assert data["document"]["id"] == "kdoc_old"
+
+
+def test_import_knowledge_url_failed(client, monkeypatch):
+    monkeypatch.setattr(
+        "backend.api.ingest_url_document",
+        lambda **kwargs: {
+            "status": "failed",
+            "error": "fetch_failed",
+            "detail": "unable_to_extract_content",
+        },
+    )
+
+    resp = client.post("/api/knowledge/import-url", json={"url": "https://example.com"})
+    assert resp.status_code == 400
