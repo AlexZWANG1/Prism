@@ -111,25 +111,23 @@ export default function AnalysisPage() {
               {/* Chat tab (always first, default) */}
               <button
                 onClick={() => setActiveTab("report")}
-                className="font-mono transition-colors"
+                className="relative font-mono transition-colors cursor-pointer"
                 style={{
                   fontSize: 12,
                   fontWeight: 500,
-                  padding: "4px 12px",
-                  borderRadius: "6px",
+                  padding: "6px 14px",
                   border: "none",
-                  cursor: "pointer",
-                  background:
-                    activeTab === "report"
-                      ? "var(--iris-accent)"
-                      : "transparent",
+                  background: "transparent",
                   color:
                     activeTab === "report"
-                      ? "#fff"
+                      ? "var(--iris-accent)"
                       : "var(--iris-text-secondary)",
                 }}
               >
                 对话
+                {activeTab === "report" && (
+                  <div className="absolute bottom-0 left-0 right-0 h-[1px] bg-[var(--iris-accent)]" />
+                )}
               </button>
 
               {/* Skill tabs */}
@@ -137,25 +135,23 @@ export default function AnalysisPage() {
                 <button
                   key={tab.key}
                   onClick={() => setActiveTab(tab.key)}
-                  className="font-mono transition-colors"
+                  className="relative font-mono transition-colors cursor-pointer"
                   style={{
                     fontSize: 12,
                     fontWeight: 500,
-                    padding: "4px 12px",
-                    borderRadius: "6px",
+                    padding: "6px 14px",
                     border: "none",
-                    cursor: "pointer",
-                    background:
-                      activeTab === tab.key
-                        ? "var(--iris-accent)"
-                        : "transparent",
+                    background: "transparent",
                     color:
                       activeTab === tab.key
-                        ? "#fff"
+                        ? "var(--iris-accent)"
                         : "var(--iris-text-secondary)",
                   }}
                 >
                   {tab.label}
+                  {activeTab === tab.key && (
+                    <div className="absolute bottom-0 left-0 right-0 h-[1px] bg-[var(--iris-accent)]" />
+                  )}
                 </button>
               ))}
             </div>

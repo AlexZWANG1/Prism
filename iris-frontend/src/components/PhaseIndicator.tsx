@@ -22,7 +22,6 @@ export function PhaseIndicator() {
       style={{
         height: 28,
         padding: "4px 10px",
-        borderBottom: "1px solid var(--iris-border)",
       }}
     >
       <div className="flex items-center gap-0">

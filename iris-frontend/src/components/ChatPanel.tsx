@@ -73,7 +73,7 @@ function AIAvatar() {
       style={{
         width: 28,
         height: 28,
-        borderRadius: "50%",
+        borderRadius: 0,
         background: "rgba(245,128,37,0.15)",
         border: "1px solid rgba(245,128,37,0.3)",
       }}
@@ -199,7 +199,7 @@ export function ChatPanel() {
                   style={{
                     maxWidth: "75%",
                     padding: "10px 14px",
-                    borderRadius: "16px 16px 4px 16px",
+                    borderRadius: 0,
                     background: "var(--iris-accent)",
                     color: "#fff",
                     fontSize: 14,
@@ -239,7 +239,7 @@ export function ChatPanel() {
               <div
                 style={{
                   padding: "12px 16px",
-                  borderRadius: "12px",
+                  borderRadius: 0,
                   background: "rgba(245,128,37,0.08)",
                   border: "1px solid rgba(245,128,37,0.2)",
                 }}
@@ -261,7 +261,7 @@ export function ChatPanel() {
                       style={{
                         fontSize: 12,
                         border: "1px solid rgba(245,128,37,0.3)",
-                        borderRadius: "8px",
+                        borderRadius: 0,
                         background: "transparent",
                         color: "var(--iris-accent)",
                         padding: "6px 12px",
@@ -295,7 +295,7 @@ export function ChatPanel() {
               height: 40,
               padding: "0 14px",
               fontSize: 14,
-              borderRadius: "10px",
+              borderRadius: 0,
               caretColor: "var(--iris-accent)",
             }}
           />
@@ -306,7 +306,7 @@ export function ChatPanel() {
             style={{
               width: 40,
               height: 40,
-              borderRadius: "10px",
+              borderRadius: 0,
               border: "none",
               background:
                 !inputValue.trim() || isInputDisabled
