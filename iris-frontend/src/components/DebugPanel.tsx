@@ -24,14 +24,16 @@ export function DebugPanel() {
           <button
             key={tab.key}
             onClick={() => setActiveTab(tab.key)}
-            className={`px-3 py-[6px] font-mono text-[11px] font-medium transition-colors ${
+            className={`relative px-3 py-[6px] font-mono text-[11px] font-medium transition-colors cursor-pointer bg-transparent border-none ${
               activeTab === tab.key
-                ? "text-[var(--iris-accent)] border-b border-[var(--iris-accent)]"
+                ? "text-[var(--iris-accent)]"
                 : "text-[var(--iris-text-muted)] hover:text-[var(--iris-text-secondary)]"
             }`}
-            style={{ cursor: "pointer", background: "transparent", border: "none", borderBottom: activeTab === tab.key ? "1px solid var(--iris-accent)" : "1px solid transparent" }}
           >
             {tab.label}
+            {activeTab === tab.key && (
+              <div className="absolute bottom-0 left-0 right-0 h-[1px] bg-[var(--iris-accent)]" />
+            )}
           </button>
         ))}
       </div>
