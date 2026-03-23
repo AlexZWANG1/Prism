@@ -119,8 +119,20 @@ def create_hypothesis(
             "id": hyp.id,
             "company": hyp.company,
             "thesis": hyp.thesis,
+            "timeframe": hyp.timeframe,
             "initial_confidence": hyp.confidence,
-            "drivers": [d.name for d in hyp.drivers],
+            "drivers": [
+                {
+                    "name": d.name,
+                    "description": d.description,
+                    "current_assessment": d.current_assessment,
+                }
+                for d in hyp.drivers
+            ],
+            "kill_criteria": [
+                {"description": k.description}
+                for k in hyp.kill_criteria
+            ],
         })
     except Exception as e:
         return ToolResult.fail(f"Failed to create hypothesis: {e}")
@@ -178,10 +190,16 @@ def add_evidence_card(
 
     retriever.save_hypothesis(hyp)
     return ToolResult.ok({
+        "hypothesis_id": hypothesis_id,
         "evidence_id": card.id,
         "observation_id": card.observation_id,
         "evidence_text": evidence_text or None,
         "direction": direction,
+        "reliability": reliability,
+        "independence": independence,
+        "novelty": novelty,
+        "driver_link": driver_link,
+        "reasoning": reasoning,
         "old_confidence": round(old_confidence, 1),
         "delta": round(delta, 2),
         "new_confidence": round(hyp.confidence, 1),

@@ -956,8 +956,10 @@ function _extractPanelData(
       const id = (result.id as string) || "";
       const company = (result.company as string) || "";
       const thesis = (result.thesis as string) || "";
+      const timeframe = (result.timeframe as string) || "";
       const confidence = typeof result.initial_confidence === "number" ? result.initial_confidence : 50;
-      const driverNames = Array.isArray(result.drivers) ? (result.drivers as string[]) : [];
+      const rawDrivers = Array.isArray(result.drivers) ? result.drivers : [];
+      const rawKill = Array.isArray(result.kill_criteria) ? result.kill_criteria : [];
 
       if (id) {
         set((s) => ({
@@ -969,15 +971,18 @@ function _extractPanelData(
                 id,
                 company,
                 thesis,
-                timeframe: "",
+                timeframe,
                 confidence,
-                drivers: driverNames.map((name) => ({
-                  name,
-                  description: "",
-                  currentAssessment: "",
+                drivers: rawDrivers.map((d: Record<string, unknown>) => ({
+                  name: (d.name as string) || "",
+                  description: (d.description as string) || "",
+                  currentAssessment: (d.current_assessment as string) || "",
                   evidenceCount: 0,
                 })),
-                killCriteria: [],
+                killCriteria: rawKill.map((k: Record<string, unknown>) => ({
+                  description: (k.description as string) || "",
+                  resolved: false,
+                })),
                 evidenceLog: [],
               },
             ],
@@ -992,28 +997,37 @@ function _extractPanelData(
       const hypId = (result.hypothesis_id as string) || "";
       const evidenceId = (result.evidence_id as string) || "";
       const direction = (result.direction as string) || "neutral";
-      const oldConf = typeof result.old_confidence === "number" ? result.old_confidence : 0;
       const newConf = typeof result.new_confidence === "number" ? result.new_confidence : 0;
       const delta = typeof result.delta === "number" ? result.delta : 0;
+      const reliability = typeof result.reliability === "number" ? result.reliability : 0;
+      const independence = typeof result.independence === "number" ? result.independence : 0;
+      const novelty = typeof result.novelty === "number" ? result.novelty : 0;
+      const driverLink = (result.driver_link as string) || "";
+      const reasoning = (result.reasoning as string) || "";
       const evidenceText = (result.evidence_text as string) || undefined;
 
       if (hypId) {
         set((s) => {
           const hypotheses = s.hypothesisPanel.hypotheses.map((h) => {
             if (h.id !== hypId) return h;
+            // Update driver evidence count
+            const drivers = h.drivers.map((d) =>
+              d.name === driverLink ? { ...d, evidenceCount: d.evidenceCount + 1 } : d
+            );
             return {
               ...h,
               confidence: newConf,
+              drivers,
               evidenceLog: [
                 ...h.evidenceLog,
                 {
                   id: evidenceId,
                   direction: direction as "supports" | "refutes" | "mixed" | "neutral",
-                  reliability: 0,
-                  independence: 0,
-                  novelty: 0,
-                  driverLink: "",
-                  reasoning: "",
+                  reliability,
+                  independence,
+                  novelty,
+                  driverLink,
+                  reasoning,
                   delta,
                   evidenceText,
                 },
