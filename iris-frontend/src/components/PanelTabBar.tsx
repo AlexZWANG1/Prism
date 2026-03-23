@@ -7,6 +7,7 @@ import type { ActiveTab } from "@/types/analysis";
 const TABS: { key: ActiveTab; label: string }[] = [
   { key: "report", label: "对话" },
   { key: "fundamentals", label: "研究" },
+  { key: "hypothesis", label: "假说" },
   { key: "data", label: "数据" },
   { key: "model", label: "模型" },
   { key: "comps", label: "可比" },
@@ -20,6 +21,7 @@ export function PanelTabBar() {
     useShallow((s) => ({
       hasReasoning: Boolean(s.reasoningText?.trim()),
       fundamentalsCount: s.fundamentalsPanel.content ? 1 : 0,
+      hypothesisCount: s.hypothesisPanel.hypotheses.length,
       dataCount: s.dataPanel.metrics.length + s.dataPanel.financialTables.length,
       modelCount:
         (s.modelPanel.fairValue ? 1 : 0) +
@@ -36,6 +38,7 @@ export function PanelTabBar() {
   const counts: Record<ActiveTab, number> = {
     report: state.hasReasoning ? 1 : 0,
     fundamentals: state.fundamentalsCount,
+    hypothesis: state.hypothesisCount,
     data: state.dataCount,
     model: state.modelCount,
     comps: state.compsCount,

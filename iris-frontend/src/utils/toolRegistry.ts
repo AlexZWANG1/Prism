@@ -48,8 +48,8 @@ const REGISTRY: Record<string, ToolDef> = {
   transcript: { label: "财报电话会", phase: "gather" },
 
   // --- Analyze phase ---
-  create_hypothesis: { label: "形成假说", phase: "analyze" },
-  add_evidence_card: { label: "添加证据", phase: "analyze" },
+  create_hypothesis: { label: "形成假说", phase: "analyze", tab: "hypothesis" },
+  add_evidence_card: { label: "添加证据", phase: "analyze", tab: "hypothesis" },
   extract_observation: { label: "提取观察", phase: "analyze" },
   emit_report: { label: "输出研究报告", phase: "finalize" },
 

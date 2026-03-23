@@ -2,7 +2,7 @@ export type PageState = "IDLE" | "RUNNING" | "WAITING" | "COMPLETE";
 
 export type Phase = "gather" | "analyze" | "evaluate" | "finalize";
 
-export type ActiveTab = "report" | "fundamentals" | "data" | "model" | "comps" | "strategy";
+export type ActiveTab = "report" | "fundamentals" | "data" | "model" | "comps" | "strategy" | "hypothesis";
 
 export type EventColor = "green" | "blue" | "amber" | "gray" | "purple" | "gold";
 
@@ -175,6 +175,46 @@ export interface FundamentalsPanelState {
   loading: boolean;
 }
 
+export interface HypothesisDriver {
+  name: string;
+  description: string;
+  currentAssessment: string;
+  evidenceCount: number;
+}
+
+export interface HypothesisKillCriterion {
+  description: string;
+  resolved: boolean;
+}
+
+export interface HypothesisEvidenceCard {
+  id: string;
+  direction: "supports" | "refutes" | "mixed" | "neutral";
+  reliability: number;
+  independence: number;
+  novelty: number;
+  driverLink: string;
+  reasoning: string;
+  delta: number;
+  evidenceText?: string;
+}
+
+export interface HypothesisData {
+  id: string;
+  company: string;
+  thesis: string;
+  timeframe: string;
+  confidence: number;
+  drivers: HypothesisDriver[];
+  killCriteria: HypothesisKillCriterion[];
+  evidenceLog: HypothesisEvidenceCard[];
+}
+
+export interface HypothesisPanelState {
+  hypotheses: HypothesisData[];
+  loading: boolean;
+}
+
 export interface MemoryPanelState {
   calibrationHits: number;
   calibrationMisses: number;
@@ -215,6 +255,7 @@ export interface AnalysisSnapshot {
     strategy?: StrategyPanelState;
     memory: MemoryPanelState;
     fundamentals?: FundamentalsPanelState;
+    hypothesis?: HypothesisPanelState;
   };
   tokens_in: number;
   tokens_out: number;

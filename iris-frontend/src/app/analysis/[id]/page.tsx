@@ -13,6 +13,7 @@ import { ModelPanel } from "@/components/ModelPanel";
 import { CompsPanel } from "@/components/CompsPanel";
 import { StrategyPanel } from "@/components/StrategyPanel";
 import { FundamentalsPanel } from "@/components/FundamentalsPanel";
+import { HypothesisPanel } from "@/components/HypothesisPanel";
 import { PanelTabBar } from "@/components/PanelTabBar";
 
 export default function AnalysisPage() {
@@ -29,6 +30,7 @@ export default function AnalysisPage() {
   const tabsWithData = useAnalysisStore(
     useShallow((s) => ({
       fundamentals: Boolean(s.fundamentalsPanel.content),
+      hypothesis: s.hypothesisPanel.hypotheses.length > 0,
       data: s.dataPanel.metrics.length > 0 || s.dataPanel.financialTables.length > 0,
       model:
         s.modelPanel.fairValue !== null ||
@@ -127,6 +129,7 @@ export default function AnalysisPage() {
             {hasActiveSkillTab ? (
               <div className="h-full overflow-y-auto">
                 {activeTab === "fundamentals" && <FundamentalsPanel />}
+                {activeTab === "hypothesis" && <HypothesisPanel />}
                 {activeTab === "data" && <DataPanel />}
                 {activeTab === "model" && <ModelPanel />}
                 {activeTab === "comps" && <CompsPanel />}

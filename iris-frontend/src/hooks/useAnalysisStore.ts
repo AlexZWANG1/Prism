@@ -11,6 +11,7 @@ import type {
   StrategyPanelState,
   MemoryPanelState,
   FundamentalsPanelState,
+  HypothesisPanelState,
   AnalysisSnapshot,
 } from "@/types/analysis";
 import type { SSEEvent } from "@/types/api";
@@ -36,6 +37,7 @@ interface AnalysisStore {
   strategyPanel: StrategyPanelState;
   memoryPanel: MemoryPanelState;
   fundamentalsPanel: FundamentalsPanelState;
+  hypothesisPanel: HypothesisPanelState;
 
   resumable: boolean;
 
@@ -96,6 +98,11 @@ const initialFundamentalsPanel: FundamentalsPanelState = {
   loading: false,
 };
 
+const initialHypothesisPanel: HypothesisPanelState = {
+  hypotheses: [],
+  loading: false,
+};
+
 export const useAnalysisStore = create<AnalysisStore>((set, get) => ({
   pageState: "IDLE",
   isReplay: false,
@@ -116,6 +123,7 @@ export const useAnalysisStore = create<AnalysisStore>((set, get) => ({
   strategyPanel: initialStrategyPanel,
   memoryPanel: initialMemoryPanel,
   fundamentalsPanel: initialFundamentalsPanel,
+  hypothesisPanel: initialHypothesisPanel,
 
   startAnalysis: async (query: string, contextDocs?: string[]) => {
     set({ pageState: "RUNNING", analysisQuery: query, timeline: [], reasoningText: "", thinkingText: "", _rawTextBuffer: "", currentPhase: "gather", isReplay: false });
@@ -499,6 +507,7 @@ export const useAnalysisStore = create<AnalysisStore>((set, get) => ({
       strategyPanel: snapshot.panels?.strategy || initialStrategyPanel,
       memoryPanel: snapshot.panels?.memory || initialMemoryPanel,
       fundamentalsPanel: snapshot.panels?.fundamentals || initialFundamentalsPanel,
+      hypothesisPanel: snapshot.panels?.hypothesis || initialHypothesisPanel,
     });
   },
 
@@ -522,6 +531,7 @@ export const useAnalysisStore = create<AnalysisStore>((set, get) => ({
       strategyPanel: initialStrategyPanel,
       memoryPanel: initialMemoryPanel,
       fundamentalsPanel: initialFundamentalsPanel,
+      hypothesisPanel: initialHypothesisPanel,
     });
   },
 }));
@@ -939,6 +949,86 @@ function _extractPanelData(
           loading: false,
         },
       }));
+      break;
+    }
+
+    case "create_hypothesis": {
+      const id = (result.id as string) || "";
+      const company = (result.company as string) || "";
+      const thesis = (result.thesis as string) || "";
+      const confidence = typeof result.initial_confidence === "number" ? result.initial_confidence : 50;
+      const driverNames = Array.isArray(result.drivers) ? (result.drivers as string[]) : [];
+
+      if (id) {
+        set((s) => ({
+          hypothesisPanel: {
+            ...s.hypothesisPanel,
+            hypotheses: [
+              ...s.hypothesisPanel.hypotheses,
+              {
+                id,
+                company,
+                thesis,
+                timeframe: "",
+                confidence,
+                drivers: driverNames.map((name) => ({
+                  name,
+                  description: "",
+                  currentAssessment: "",
+                  evidenceCount: 0,
+                })),
+                killCriteria: [],
+                evidenceLog: [],
+              },
+            ],
+            loading: false,
+          },
+        }));
+      }
+      break;
+    }
+
+    case "add_evidence_card": {
+      const hypId = (result.hypothesis_id as string) || "";
+      const evidenceId = (result.evidence_id as string) || "";
+      const direction = (result.direction as string) || "neutral";
+      const oldConf = typeof result.old_confidence === "number" ? result.old_confidence : 0;
+      const newConf = typeof result.new_confidence === "number" ? result.new_confidence : 0;
+      const delta = typeof result.delta === "number" ? result.delta : 0;
+      const evidenceText = (result.evidence_text as string) || undefined;
+
+      if (hypId) {
+        set((s) => {
+          const hypotheses = s.hypothesisPanel.hypotheses.map((h) => {
+            if (h.id !== hypId) return h;
+            return {
+              ...h,
+              confidence: newConf,
+              evidenceLog: [
+                ...h.evidenceLog,
+                {
+                  id: evidenceId,
+                  direction: direction as "supports" | "refutes" | "mixed" | "neutral",
+                  reliability: 0,
+                  independence: 0,
+                  novelty: 0,
+                  driverLink: "",
+                  reasoning: "",
+                  delta,
+                  evidenceText,
+                },
+              ],
+            };
+          });
+          return {
+            hypothesisPanel: {
+              ...s.hypothesisPanel,
+              hypotheses,
+              loading: false,
+            },
+          };
+        });
+      }
       break;
     }
   }
