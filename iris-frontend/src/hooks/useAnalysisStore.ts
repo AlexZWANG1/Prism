@@ -39,7 +39,7 @@ interface AnalysisStore {
 
   resumable: boolean;
 
-  startAnalysis: (query: string, contextDocs?: string[]) => Promise<void>;
+  startAnalysis: (query: string, contextDocs?: string[], deepResearch?: boolean) => Promise<void>;
   sendSteering: (message: string) => Promise<void>;
   continueAnalysis: (message: string) => Promise<void>;
   resumeAnalysis: (message: string) => Promise<void>;
@@ -117,12 +117,13 @@ export const useAnalysisStore = create<AnalysisStore>((set, get) => ({
   memoryPanel: initialMemoryPanel,
   fundamentalsPanel: initialFundamentalsPanel,
 
-  startAnalysis: async (query: string, contextDocs?: string[]) => {
+  startAnalysis: async (query: string, contextDocs?: string[], deepResearch?: boolean) => {
     set({ pageState: "RUNNING", analysisQuery: query, timeline: [], reasoningText: "", thinkingText: "", _rawTextBuffer: "", currentPhase: "gather", isReplay: false });
     try {
       const response = await api.startAnalysis({
         query,
         contextDocs,
+        deep_research: deepResearch,
       });
       set({ analysisId: response.analysisId });
     } catch (error) {
@@ -468,6 +469,65 @@ export const useAnalysisStore = create<AnalysisStore>((set, get) => ({
             },
           ],
         }));
+        break;
+      }
+
+      case "eval_start": {
+        const { round: evalRound, totalRounds } = event.data as {
+          round: number;
+          totalRounds: number;
+        };
+        set((s) => ({
+          timeline: [
+            ...s.timeline,
+            {
+              id: `eval-start-${evalRound}-${event.timestamp}`,
+              timestamp: event.timestamp,
+              tool: "evaluator",
+              message: `质量检查中 (${evalRound + 1}/${totalRounds})...`,
+              phase: "finalize" as Phase,
+              color: "amber",
+              status: "running",
+            },
+          ],
+        }));
+        break;
+      }
+
+      case "eval_end": {
+        const { round: evalRound, passed, score, feedback } = event.data as {
+          round: number;
+          passed: boolean;
+          score: number;
+          feedback: string;
+        };
+        set((s) => {
+          // Update the eval_start entry to complete
+          const idx = [...s.timeline].reverse().findIndex(
+            (item) => item.tool === "evaluator" && item.status === "running"
+          );
+          const updatedTimeline = [...s.timeline];
+          if (idx !== -1) {
+            const actualIdx = s.timeline.length - 1 - idx;
+            updatedTimeline[actualIdx] = {
+              ...updatedTimeline[actualIdx],
+              status: passed ? "complete" : "error",
+              message: passed
+                ? `质量检查通过 (${score.toFixed(1)}/5.0)`
+                : `质量检查未通过 (${score.toFixed(1)}/5.0) — 修正中...`,
+            };
+          }
+          // If not passed, clear the text buffer so the next round's streaming
+          // doesn't append to the old text
+          if (!passed) {
+            return {
+              timeline: updatedTimeline,
+              _rawTextBuffer: "",
+              reasoningText: "",
+            };
+          }
+          return { timeline: updatedTimeline };
+        });
         break;
       }
 

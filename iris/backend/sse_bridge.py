@@ -147,6 +147,29 @@ def _handle_steering_injected(event: HarnessEvent) -> dict:
     }
 
 
+def _handle_eval_start(event: HarnessEvent) -> dict:
+    return {
+        "event": "eval_start",
+        "data": {
+            "round": event.data.get("round", 0),
+            "totalRounds": event.data.get("total_rounds", 5),
+        },
+    }
+
+
+def _handle_eval_end(event: HarnessEvent) -> dict:
+    return {
+        "event": "eval_end",
+        "data": {
+            "round": event.data.get("round", 0),
+            "passed": event.data.get("passed", False),
+            "score": event.data.get("score", 0),
+            "feedback": event.data.get("feedback", ""),
+            "issues": event.data.get("issues", []),
+        },
+    }
+
+
 _HANDLERS = {
     EventType.TOOL_START: _handle_tool_start,
     EventType.TOOL_END: _handle_tool_end,
@@ -158,4 +181,6 @@ _HANDLERS = {
     EventType.LOOP_DETECTED: _handle_loop_detected,
     EventType.BUDGET_TRIMMED: _handle_budget_trimmed,
     EventType.STEERING_INJECTED: _handle_steering_injected,
+    EventType.EVAL_START: _handle_eval_start,
+    EventType.EVAL_END: _handle_eval_end,
 }

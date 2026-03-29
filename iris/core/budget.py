@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from typing import Literal
 
 
-BudgetCategory = Literal["main", "flush", "compaction", "embedding"]
+BudgetCategory = Literal["main", "flush", "compaction", "embedding", "evaluator"]
 
 
 @dataclass
@@ -34,9 +34,9 @@ class BudgetTracker:
         self.started_at = time.monotonic()
 
         self._counted_rounds = 0
-        self._rounds_by_category = {"main": 0, "flush": 0, "compaction": 0, "embedding": 0}
-        self._tool_calls_by_category = {"main": 0, "flush": 0, "compaction": 0, "embedding": 0}
-        self._llm_calls_by_category = {"main": 0, "flush": 0, "compaction": 0, "embedding": 0}
+        self._rounds_by_category = {"main": 0, "flush": 0, "compaction": 0, "embedding": 0, "evaluator": 0}
+        self._tool_calls_by_category = {"main": 0, "flush": 0, "compaction": 0, "embedding": 0, "evaluator": 0}
+        self._llm_calls_by_category = {"main": 0, "flush": 0, "compaction": 0, "embedding": 0, "evaluator": 0}
 
         self._total_input_tokens = 0
         self._total_output_tokens = 0
@@ -131,6 +131,7 @@ class BudgetTracker:
                 "flush": self._llm_calls_by_category.get("flush", 0),
                 "compaction": self._llm_calls_by_category.get("compaction", 0),
                 "embedding": self._llm_calls_by_category.get("embedding", 0),
+                "evaluator": self._llm_calls_by_category.get("evaluator", 0),
                 "total": sum(self._llm_calls_by_category.values()),
             },
             "tool_calls": {

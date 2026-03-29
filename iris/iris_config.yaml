@@ -58,6 +58,13 @@ harness:
     sec_filing: ["10-K", "10-Q", "SEC", "filing", "年报", "季报", "segment", "分部", "业务分部", "XBRL"]
     transcript: ["earnings call", "电话会", "管理层", "transcript", "纪要", "业绩会", "guidance", "指引"]
 
+# Deep research (evaluator loop) — opt-in enhancement for analysis mode
+deep_research:
+  enabled: false              # default off; pass deep_research=true per request
+  max_eval_rounds: 5
+  eval_pass_threshold: 3.0
+  min_tools_for_eval: 2
+
 budget:
   include_flush_in_tool_rounds: true
   include_compaction_in_tool_rounds: true

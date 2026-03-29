@@ -3,7 +3,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from core.config import load_config, load_soul, register_skill_config, DB_PATH
+from core.config import load_config, load_soul, register_skill_config, DB_PATH, get as config_get
 from core.harness import Harness, HarnessConfig, HarnessEvent, EventType
 from core.loop_detector import LoopDetectionConfig
 from core.skill_loader import load_skills
@@ -172,6 +172,11 @@ def build_harness(
                 action=loop_cfg.get("action", "steer_then_stop"),
             ),
             streaming=streaming,
+            # Deep research config
+            deep_research=config_get("deep_research.enabled", False),
+            max_eval_rounds=config_get("deep_research.max_eval_rounds", 5),
+            eval_pass_threshold=config_get("deep_research.eval_pass_threshold", 3.0),
+            min_tools_for_eval=config_get("deep_research.min_tools_for_eval", 2),
         ),
         on_event=on_event,
         retriever=retriever,

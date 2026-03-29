@@ -102,6 +102,7 @@ export default function HomePage() {
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [mode, setMode] = useState<AnalysisMode>("analysis");
+  const [deepResearch, setDeepResearch] = useState(false);
   const [searchLoading, setSearchLoading] = useState(false);
   const router = useRouter();
 
@@ -162,14 +163,14 @@ export default function HomePage() {
 
     setSearchLoading(true);
     try {
-      const result = await startAnalysis({ query: trimmed, mode });
+      const result = await startAnalysis({ query: trimmed, mode, deep_research: deepResearch });
       router.push(`/analysis/${result.analysisId}`);
     } catch (submitError) {
       console.error("Failed to start analysis:", submitError);
       setSearchLoading(false);
       setError("无法启动分析，请稍后重试。");
     }
-  }, [mode, query, router, searchLoading]);
+  }, [deepResearch, mode, query, router, searchLoading]);
 
   return (
     <div className="h-[calc(100vh-56px)] overflow-y-auto">
@@ -194,9 +195,11 @@ export default function HomePage() {
           <SearchBar
             value={query}
             mode={mode}
+            deepResearch={deepResearch}
             loading={searchLoading}
             onChange={setQuery}
             onModeChange={setMode}
+            onDeepResearchChange={setDeepResearch}
             onSubmit={handleSubmit}
           />
         </section>

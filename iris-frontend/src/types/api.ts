@@ -10,6 +10,8 @@ export type SSEEventType =
   | "steering"
   | "user_input_needed"
   | "analysis_complete"
+  | "eval_start"
+  | "eval_end"
   | "done";
 
 export interface SSEEvent {
@@ -39,6 +41,7 @@ export interface AnalysisStartRequest {
   query: string;
   contextDocs?: string[];
   mode?: 'analysis' | 'learning';
+  deep_research?: boolean;
 }
 
 export interface AnalysisStartResponse {

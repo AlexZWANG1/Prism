@@ -207,6 +207,7 @@ class AnalyzeRequest(BaseModel):
     query: str
     contextDocs: Optional[list[str]] = None
     mode: Optional[str] = "analysis"
+    deep_research: Optional[bool] = False
 
 
 class AnalyzeResponse(BaseModel):
@@ -458,7 +459,11 @@ async def start_analysis(req: AnalyzeRequest):
                 session.status = "idle"
                 return
 
-            result = harness.run(req.query, context_docs=req.contextDocs)
+            result = harness.run(
+                req.query,
+                context_docs=req.contextDocs,
+                deep_research=req.deep_research or False,
+            )
 
             # --- Persist to DB ---
             snap = session.snapshot()

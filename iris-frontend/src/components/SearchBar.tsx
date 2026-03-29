@@ -7,9 +7,11 @@ export type AnalysisMode = "analysis" | "learning";
 interface SearchBarProps {
   value: string;
   mode: AnalysisMode;
+  deepResearch?: boolean;
   loading?: boolean;
   onChange: (value: string) => void;
   onModeChange: (mode: AnalysisMode) => void;
+  onDeepResearchChange?: (enabled: boolean) => void;
   onSubmit: () => void | Promise<void>;
 }
 
@@ -20,9 +22,11 @@ const PLACEHOLDER = `描述你的研究任务...
 export function SearchBar({
   value,
   mode,
+  deepResearch = false,
   loading = false,
   onChange,
   onModeChange,
+  onDeepResearchChange,
   onSubmit,
 }: SearchBarProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -92,6 +96,25 @@ export function SearchBar({
             </svg>
             学习模式
           </button>
+
+          {mode === "analysis" && onDeepResearchChange && (
+            <button
+              type="button"
+              onClick={() => onDeepResearchChange(!deepResearch)}
+              className="inline-flex items-center gap-2 rounded-pill border px-3 py-2 text-[12px] font-semibold transition-colors"
+              style={{
+                borderColor: deepResearch ? "var(--amber)" : "var(--b2)",
+                background: deepResearch ? "rgba(245,158,11,0.08)" : "var(--bg)",
+                color: deepResearch ? "var(--amber)" : "var(--t2)",
+              }}
+              title="开启后分析结果将经过独立质量审核，发现问题自动修正"
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              质量审核
+            </button>
+          )}
         </div>
 
         <div className="text-[12px] text-[var(--t4)] sm:ml-auto">Shift+Enter 换行 · Enter 发送</div>

@@ -48,6 +48,8 @@ class EventType(str, Enum):
     STEERING_INJECTED = "steering_injected"
     LOOP_DETECTED = "loop_detected"
     BUDGET_TRIMMED = "budget_trimmed"
+    EVAL_START = "eval_start"
+    EVAL_END = "eval_end"
 
 
 @dataclass
@@ -94,6 +96,12 @@ class HarnessConfig:
     parallel_tool_execution: bool = True
     streaming: bool = False
     persist_events: bool = True
+
+    # Deep research (evaluator loop)
+    deep_research: bool = False
+    max_eval_rounds: int = 5
+    eval_pass_threshold: float = 3.0
+    min_tools_for_eval: int = 2
 
 
 @dataclass
@@ -152,9 +160,13 @@ class Harness:
         self._steering_queue.put(message)
 
     @observe(name="iris-analysis")
-    def run(self, user_input: str, context_docs: list[str] = None) -> HarnessResult:
+    def run(self, user_input: str, context_docs: list[str] = None,
+            deep_research: bool | None = None) -> HarnessResult:
+        use_deep = deep_research if deep_research is not None else self.config.deep_research
         self._abort.clear()
         self._current_run_id = f"run_{uuid.uuid4().hex[:12]}"
+        self._tool_evidence: dict = {}  # accumulated tool results for evaluator
+        self._deep_mode = use_deep
 
         budget = BudgetTracker(self._budget_policy())
         self._active_budget = budget
@@ -179,6 +191,7 @@ class Harness:
                 "subject": subject,
                 "budget": budget.remaining_dict(),
                 "loop_status": loop_detector.status(),
+                "deep_research": use_deep,
             },
         )
 
@@ -188,6 +201,11 @@ class Harness:
             tags=["iris-analysis"],
         ):
             try:
+                if use_deep:
+                    return self._run_with_evaluator(
+                        user_input, budget, loop_detector,
+                        messages, tool_log, recent_tool_names,
+                    )
                 return self._main_loop(budget, loop_detector, messages, tool_log, recent_tool_names)
             finally:
                 _trace_flush()
@@ -454,6 +472,122 @@ class Harness:
             )
             main_round += 1
 
+    # Deep research evaluator loop --------------------------------
+
+    def _run_with_evaluator(
+        self,
+        query: str,
+        budget: BudgetTracker,
+        loop_detector: LoopDetector,
+        messages: list[dict],
+        tool_log: list[dict],
+        recent_tool_names: list[str],
+    ) -> HarnessResult:
+        """Run Generator → Evaluator loop for deep analysis."""
+        from core.evaluator import Evaluator, EvaluatorConfig
+        from core.run_directory import RunDirectory
+
+        run_dir = RunDirectory(self._current_run_id)
+        run_dir.write_state({
+            "run_id": self._current_run_id,
+            "query": query,
+            "round": 0,
+            "status": "starting",
+            "max_rounds": self.config.max_eval_rounds,
+        })
+
+        evaluator = Evaluator(
+            llm=self.llm,
+            config=EvaluatorConfig(
+                pass_threshold=self.config.eval_pass_threshold,
+                min_tools_for_eval=self.config.min_tools_for_eval,
+            ),
+            run_dir=run_dir,
+        )
+
+        last_result: HarnessResult | None = None
+
+        for eval_round in range(self.config.max_eval_rounds):
+            round_num = eval_round + 1
+
+            # ── Phase 1: Generator (Build) ──
+            self._tool_evidence = {}  # fresh per round
+            result = self._main_loop(
+                budget, loop_detector, messages, tool_log, recent_tool_names,
+            )
+            last_result = result
+
+            if not result.ok:
+                run_dir.write_state({
+                    "round": round_num, "status": "generator_failed",
+                    "error": result.error,
+                })
+                return result
+
+            # Persist Generator output to disk
+            run_dir.write_evidence_batch(round_num, self._tool_evidence)
+            run_dir.write_conclusion(round_num, result.reply or "")
+
+            # Gate: skip eval for trivial queries
+            if not evaluator.should_evaluate(tool_log):
+                run_dir.write_state({"round": round_num, "status": "skipped_eval"})
+                return result
+
+            # ── Phase 2: Evaluator (QA) ──
+            self._emit(EventType.EVAL_START, {
+                "round": eval_round,
+                "total_rounds": self.config.max_eval_rounds,
+            })
+
+            eval_result = evaluator.evaluate(
+                query=query,
+                round_num=round_num,
+                tool_log=tool_log,
+                budget=budget,
+            )
+
+            run_dir.write_state({
+                "round": round_num,
+                "status": "passed" if eval_result.passed else "eval_failed",
+                "eval_score": eval_result.overall_score,
+                "eval_feedback": eval_result.feedback,
+                "tools_called": [t["tool"] for t in tool_log if t.get("status") == "ok"],
+            })
+
+            self._emit(EventType.EVAL_END, {
+                "round": eval_round,
+                "passed": eval_result.passed,
+                "score": eval_result.overall_score,
+                "feedback": eval_result.feedback,
+                "issues": [i.to_dict() for i in eval_result.issues],
+            })
+
+            if eval_result.passed:
+                result.budget_breakdown["eval_scores"] = eval_result.to_dict()
+                result.budget_breakdown["eval_rounds"] = round_num
+                return result
+
+            # ── FAIL: inject feedback for next round ──
+            if eval_round < self.config.max_eval_rounds - 1:
+                feedback = (
+                    f"[EVALUATOR FEEDBACK — Round {round_num}]\n"
+                    f"Score: {eval_result.overall_score}/5.0 (need ≥{self.config.eval_pass_threshold})\n\n"
+                    f"Issues found:\n{eval_result.feedback}\n\n"
+                    "Please fix these specific issues and regenerate the analysis. "
+                    "Verify your numbers against the tool data before concluding."
+                )
+                messages.append({"role": "user", "content": feedback})
+
+                # Fresh loop detector for next round (tool patterns will differ)
+                loop_detector = LoopDetector(self.config.loop_detection)
+                # Budget is shared across all rounds (no reset)
+
+        # Max rounds reached — return best result with warning
+        if last_result:
+            last_result.budget_breakdown["eval_warning"] = "Max eval rounds reached"
+            last_result.budget_breakdown["eval_rounds"] = self.config.max_eval_rounds
+        return last_result
+
     # Workflow completions ----------------------------------------
 
     def _check_workflow_completions(self, tool_log: list[dict], messages: list[dict]) -> str | None:
@@ -611,6 +745,10 @@ class Harness:
                 span.set_output({"status": "ok"})
             else:
                 span.set_error(result.error or "unknown error")
+
+        # Collect full tool result for evaluator (deep research only)
+        if getattr(self, "_deep_mode", False) and result.status == "ok" and result.data:
+            self._tool_evidence[tc.name] = result.data
 
         # Build audit-friendly result snapshot (truncated for storage)
         result_snapshot = self._truncate_for_audit(result.data) if result.status == "ok" else None
