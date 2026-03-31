@@ -4,15 +4,7 @@
 >
 > 一束复杂的市场数据进来，Prism 将它分解成清晰的光谱：基本面假说、估值模型、交易信号。
 
-Prism 是一个 **自主投研 Agent**，把自然语言研究任务转化为结构化、有证据支撑的投资分析。它的核心不是「调 API 拼凑答案」，而是一个严肃设计的 **LLM 控制循环（Harness）**—— 带预算管理、循环检测、上下文压缩和记忆冲刷的完整 Agent 运行时。
-
-### 最近更新（2026-03 ~ 2026-04）
-
-- **Deep Research 模式**：Generator-Evaluator 双 Agent 循环。Generator 自主完成研究 → Evaluator 独立校验数字和逻辑 → 不通过则打回修正，直到 PASS。首次 META 分析中 Evaluator 抓到了 forward P/E 写错（27.5x vs 实际 14.94x）的数据幻觉。
-- **Langfuse 全链路追踪**：每次 LLM 调用、工具调用、token 消耗、成本均自动上报 Langfuse，支持 trace 回放和 prompt 版本管理。
-- **Evaluator Prompt 重写**：基于 Langfuse dual-track 对比迭代，Evaluator 现在逐项核对工具原始返回值 vs 报告引用数字。
-- **LLM 分类取代正则**：ticker 提取、元数据分类、模式路由全部改为 LLM-based，消除了 regex/keyword heuristic 的边界错误。
-- **Trace Report 系统**：每次分析自动生成逐轮 trace 报告（LLM thinking → tool calls → evaluator verdict），存入 `trace_reports/`。
+Prism 是一个 **自主投研 Agent**，把自然语言研究任务转化为结构化、有证据支撑的投资分析。它的核心不是「调 API 拼凑答案」，而是一个严肃设计的 **LLM 控制循环（Harness）**—— 带预算管理、循环检测、上下文压缩、记忆冲刷和 **独立 Evaluator 校验** 的完整 Agent 运行时。
 
 ---
 
@@ -23,6 +15,7 @@ Prism 是一个 **自主投研 Agent**，把自然语言研究任务转化为结
 │  Harness（代码层）                                    │
 │  公式、流程、安全检查 —— 必须稳定正确                      │
 │  Agent Loop · Budget · Loop Detection · Compaction   │
+│  Evaluator · Langfuse Tracing                        │
 ├─────────────────────────────────────────────────────┤
 │  Context（配置层）  iris_config.yaml                   │
 │  权重、阈值、参数 —— 依赖信息，可调                        │
@@ -30,7 +23,7 @@ Prism 是一个 **自主投研 Agent**，把自然语言研究任务转化为结
 ├─────────────────────────────────────────────────────┤
 │  Prompt（灵魂层）  soul/                               │
 │  哲学、风格、判断力 —— 本来就不确定                        │
-│  角色定义 · 投资哲学 · 贝叶斯框架 · 自检清单                │
+│  角色定义 · 投资哲学 · 贝叶斯框架 · 自检清单 · Evaluator   │
 └─────────────────────────────────────────────────────┘
 ```
 
@@ -76,7 +69,7 @@ Harness 是整个系统的引擎。它不是简单的「LLM + tool call」，而
 1. **Steering 注入** — 支持运行中实时注入用户引导（通过 steering queue），无需重启
 2. **上下文检查** — 监控消息总量，85% 阈值触发主动压缩
 3. **工具注入** — 每轮动态暴露工具 schema，LLM 自主决定调用顺序
-4. **LLM 推理** — 带流式输出和自动重试（限速、上下文溢出）
+4. **LLM 推理** — 带流式输出和自动重试（限速、上下文溢出），全链路 Langfuse 追踪
 5. **工具分发** — 多工具并行（ThreadPoolExecutor, 4 workers），单工具串行
 6. **循环检测** — 检查重复模式，决定引导还是终止
 7. **预算检查** — 三维度独立约束，任一超限即停
@@ -131,7 +124,7 @@ Token 消耗按类别记账：`main`（推理）、`flush`（记忆冲刷）、`
 ## 系统架构
 
 ```
-Frontend (Next.js + React + Tailwind)
+Frontend (Next.js 15 + React 19 + Tailwind 4 + Zustand 5 + Recharts)
 ├── 首页 / 分析 / 知识库 / 记忆管理 / 开发面板
 │
 │── SSE（流式推理实时推送） + REST API
@@ -139,9 +132,11 @@ Frontend (Next.js + React + Tailwind)
 Backend (FastAPI + Uvicorn)
 ├── Harness（Agent 控制循环）
 │   ├── 预算控制 · 循环检测 · 上下文压缩 · 记忆冲刷
+│   ├── Evaluator（独立 Agent — deep research 模式）
 │   ├── 工具分发（并行 ThreadPoolExecutor）
 │   ├── 流式事件桥接（HarnessEvent → SSE）
-│   └── LLM Client → cliproxy → LLM
+│   ├── Langfuse 全链路追踪
+│   └── LLM Client → cliproxy → LLM (gpt-5.4)
 ├── Skills（领域技能 — SKILL.md + tools.py）
 │   ├── fundamentals — 深度研究方法论
 │   ├── valuation — DCF + 可比公司框架
@@ -154,6 +149,7 @@ Backend (FastAPI + Uvicorn)
 │   └── 记忆: remember, recall, unified_memory
 ├── Soul（提示层 — 纯 Markdown）
 │   ├── role, reflection, self_check, steering
+│   ├── evaluator.md — Evaluator 独立校验 prompt
 │   └── 贝叶斯证据评估 · 风险评估框架
 ├── Session Manager（会话管理）
 │   ├── 事件累积器（timeline, panels, raw_text）
@@ -169,7 +165,7 @@ Backend (FastAPI + Uvicorn)
 
 ## 三种工作模式
 
-### 深度研究模式（Deep Research） 🆕
+### 深度研究模式（Deep Research）
 
 **Generator-Evaluator 双 Agent 架构**，灵感来自 GAN 对抗验证思路：
 
@@ -289,6 +285,29 @@ Skills 是领域能力单元：`SKILL.md`（行为提示词）+ `tools.py`（专
 
 ---
 
+## 可观测性（Observability）
+
+### Langfuse 全链路追踪
+
+每次分析自动上报到 [Langfuse](https://langfuse.com)：
+
+- **LLM 调用**：input/output tokens, reasoning tokens, latency, cost
+- **工具调用**：参数、返回状态、耗时
+- **Evaluator 独立 trace**：与 Generator 分开记录，便于对比分析
+- **Prompt 版本管理**：通过 Langfuse Prompt Management 管理 skill prompt 迭代
+
+### Trace Report
+
+每次 deep research 自动生成逐轮 trace 报告（`iris/trace_reports/`），记录：
+- 每一步 LLM 的 `<thinking>` 推理过程
+- 工具调用的完整参数和结果（成功/失败）
+- Evaluator 的 verdict（通过/未通过 + must_fix + verified 项）
+- 关键数字的交叉验证结果
+
+同步到 Notion 追踪数据库，支持按股票、模式、信号、成本等维度筛选分析历史。
+
+---
+
 ## 可拓展性
 
 ### 添加新工具（零配置发现）
@@ -326,6 +345,7 @@ iris/soul/
 ├── v0.1.md         # 投资哲学：贝叶斯证据评估 + 风险 = 永久亏损概率 × 幅度
 ├── reflection.md   # 反思方法论
 ├── self_check.md   # 自检清单
+├── evaluator.md    # Evaluator 独立校验 prompt
 └── steering.md     # 行为导向
 ```
 
@@ -336,7 +356,7 @@ iris/soul/
 | 参数域 | 可调内容 |
 |---|---|
 | **harness** | 工具轮次、总调用上限、超时、上下文压缩阈值、工具结果压缩上限 |
-| **modes** | analysis / learning 模式各自的技能组合、工具集、预算 |
+| **modes** | deep_research / analysis / learning 模式各自的技能组合、工具集、预算 |
 | **vector_search** | 嵌入模型、top-k 检索数量 |
 | **knowledge** | 文档分块大小（800）和重叠长度（200） |
 | **loop_detection** | 重复/乒乓/无进展阈值、处理策略 |
@@ -350,6 +370,7 @@ iris/soul/
 
 - Python 3.11+ / Node.js 18+
 - API Key：OpenAI 兼容 LLM 端点、[EXA](https://exa.ai) 搜索、[FMP](https://financialmodelingprep.com) 金融数据
+- （可选）[Langfuse](https://langfuse.com) 账号用于追踪
 
 ### 安装 & 启动
 
@@ -385,31 +406,9 @@ cd iris-frontend && npm run dev
 | LLM API（OpenAI 兼容） | 核心推理引擎 | ~$0.05–0.50 / 次分析 |
 | EXA Search | 全网搜索 | 有免费额度 |
 | FMP | 金融数据 | 有免费额度 |
+| Langfuse | 追踪（可选） | 免费 tier 足够 |
 
-一次深度分析（25 轮工具调用）≈ **$0.10–0.30** LLM 费用。
-
----
-
-## 可观测性（Observability） 🆕
-
-### Langfuse 全链路追踪
-
-每次分析自动上报到 Langfuse：
-
-- **LLM 调用**：input/output tokens, reasoning tokens, latency, cost
-- **工具调用**：参数、返回状态、耗时
-- **Evaluator 独立 trace**：与 Generator 分开记录
-- **Prompt 版本管理**：通过 Langfuse Prompt Management 管理 skill prompt 迭代
-
-### Trace Report
-
-每次 deep research 自动生成逐轮 trace 报告，记录：
-- 每一步 LLM 的 thinking（推理过程）
-- 工具调用的完整参数和结果
-- Evaluator 的 verdict（通过/未通过 + 原因）
-- 关键数字的交叉验证结果
-
-存储在 `iris/trace_reports/` 下，同步到 Notion 追踪数据库。
+一次标准分析（25 轮工具调用）≈ **$0.10–0.30** LLM 费用。Deep research（含 Evaluator）≈ **$0.40–0.60**。
 
 ---
 
