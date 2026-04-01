@@ -348,33 +348,48 @@ def _filing_section(edgar, ticker: str, filing_type: str, section_name: str, max
         except Exception:
             pass
 
-    # Try item-based access
+    # Try __getitem__ access (reliable path — handles both new parser and legacy)
     if not content and item_key:
         try:
-            val = obj.get_item_with_part(item_key, None)
+            val = obj[item_key]
             if val:
                 content = str(val)
         except Exception:
             pass
 
-    # Fallback: search in available items
+    # Fallback: search in available items via __getitem__
     if not content:
         available_items = getattr(obj, 'items', [])
         for item in available_items:
             if item_key and item.lower() == item_key.lower():
                 try:
-                    val = obj.get_item_with_part(item, None)
+                    val = obj[item]
                     if val:
                         content = str(val)
                         break
                 except Exception:
                     continue
 
+    # Last resort: try full text search via filing HTML if available
+    if not content and item_key:
+        try:
+            html = getattr(obj, 'html', None) or getattr(obj, 'text', None)
+            if html and isinstance(html, str):
+                # Search for the item header in raw text
+                import re
+                pattern = re.compile(rf'{re.escape(item_key)}[\.\s\-—:]', re.IGNORECASE)
+                match = pattern.search(html)
+                if match:
+                    start = match.start()
+                    content = html[start:start + max_chars * 2]  # grab extra, will truncate later
+        except Exception:
+            pass
+
     if not content:
         available = getattr(obj, 'items', [])
         return ToolResult.fail(
             f"Could not extract section '{section_name}' from {ticker} {filing_type}",
-            hint=f"Available items: {available}. Try a different section_name.",
+            hint=f"Available items: {available}. Try MD&A which has best parser support, or use exa_search to find the info online.",
         )
 
     # Truncate

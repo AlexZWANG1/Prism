@@ -1,11 +1,25 @@
 """
-Market data tools — powered by yfinance.
+Market data tools — FMP primary, yfinance fallback.
 
-Provides stock price, historical data, and key stats without an API key.
+Provides stock price, historical data, and key stats.
+FMP (Financial Modeling Prep) is the primary source for reliability;
+yfinance serves as a zero-cost fallback when FMP fails or quota is exhausted.
 """
 
+import os
+import logging
+from datetime import datetime, timedelta
+
+import httpx
 import yfinance as yf
+
 from .base import ToolResult, make_tool_schema
+
+logger = logging.getLogger(__name__)
+
+_FMP_KEY = os.getenv("FMP_API_KEY", "")
+_FMP_BASE = "https://financialmodelingprep.com/stable"
+_FMP_TIMEOUT = 10
 
 
 QUOTE_SCHEMA = make_tool_schema(
@@ -50,97 +64,264 @@ HISTORY_SCHEMA = make_tool_schema(
 )
 
 
-def quote(ticker: str) -> ToolResult:
-    """Get current quote and key stats via yfinance."""
+# ── FMP helpers ──────────────────────────────────────────────
+
+def _fmp_get(endpoint: str, params: dict | None = None) -> dict | list | None:
+    """Call an FMP stable endpoint. Returns parsed JSON or None on failure."""
+    if not _FMP_KEY:
+        return None
     try:
-        t = yf.Ticker(ticker)
-        info = t.info
-
-        if not info or info.get("trailingPegRatio") is None and info.get("regularMarketPrice") is None:
-            # Fallback: try fast_info
-            fi = t.fast_info
-            if fi is None:
-                return ToolResult.fail(
-                    f"No data for ticker '{ticker}'",
-                    hint="Check ticker symbol. A-shares use suffix .SS (Shanghai) or .SZ (Shenzhen).",
-                )
-            return ToolResult.ok({
-                "ticker": ticker.upper(),
-                "price": round(fi.last_price, 2) if fi.last_price else None,
-                "market_cap": fi.market_cap,
-                "currency": fi.currency,
-            })
-
-        # Extract key fields, skip None values
-        fields = {
-            "ticker": ticker.upper(),
-            "name": info.get("shortName"),
-            "price": info.get("regularMarketPrice") or info.get("currentPrice"),
-            "currency": info.get("currency"),
-            "market_cap": info.get("marketCap"),
-            "pe_trailing": info.get("trailingPE"),
-            "pe_forward": info.get("forwardPE"),
-            "ps": info.get("priceToSalesTrailing12Months"),
-            "pb": info.get("priceToBook"),
-            "ev_ebitda": info.get("enterpriseToEbitda"),
-            "dividend_yield": info.get("dividendYield"),
-            "beta": info.get("beta"),
-            "52w_high": info.get("fiftyTwoWeekHigh"),
-            "52w_low": info.get("fiftyTwoWeekLow"),
-            "50d_avg": info.get("fiftyDayAverage"),
-            "200d_avg": info.get("twoHundredDayAverage"),
-            "avg_volume": info.get("averageDailyVolume10Day"),
-            "sector": info.get("sector"),
-            "industry": info.get("industry"),
-        }
-        return ToolResult.ok({k: v for k, v in fields.items() if v is not None})
-
+        p = {"apikey": _FMP_KEY, **(params or {})}
+        r = httpx.get(f"{_FMP_BASE}/{endpoint}", params=p, timeout=_FMP_TIMEOUT)
+        if r.status_code != 200:
+            return None
+        data = r.json()
+        # FMP returns error messages as dicts
+        if isinstance(data, dict) and "Error Message" in data:
+            return None
+        return data
     except Exception as e:
-        return ToolResult.fail(f"yfinance error: {str(e)}", recoverable=True)
+        logger.debug(f"FMP {endpoint} failed: {e}")
+        return None
+
+
+def _fmp_quote(ticker: str) -> ToolResult | None:
+    """Try to build a quote from FMP stable/quote + stable/ratios-ttm."""
+    # 1. Basic quote (price, market cap, 52w range)
+    quote_data = _fmp_get("quote", {"symbol": ticker})
+    if not quote_data or not isinstance(quote_data, list) or not quote_data:
+        return None
+
+    q = quote_data[0]
+    price = q.get("price")
+    if not price:
+        return None
+
+    fields = {
+        "ticker": ticker.upper(),
+        "name": q.get("name"),
+        "price": price,
+        "currency": "USD",
+        "market_cap": q.get("marketCap"),
+        "52w_high": q.get("yearHigh"),
+        "52w_low": q.get("yearLow"),
+        "50d_avg": q.get("priceAvg50"),
+        "200d_avg": q.get("priceAvg200"),
+        "avg_volume": int(q["volume"]) if q.get("volume") else None,
+    }
+
+    # 2. Ratios TTM (P/E, P/B, P/S, EV/EBITDA, dividend yield)
+    ratios = _fmp_get("ratios-ttm", {"symbol": ticker})
+    if ratios and isinstance(ratios, list) and ratios:
+        rt = ratios[0]
+        fields["pe_trailing"] = _round(rt.get("priceToEarningsRatioTTM"))
+        fields["pe_forward"] = None  # FMP ratios-ttm doesn't have forward PE
+        fields["ps"] = _round(rt.get("priceToSalesRatioTTM"))
+        fields["pb"] = _round(rt.get("priceToBookRatioTTM"))
+        fields["dividend_yield"] = _round(rt.get("dividendYieldTTM"), 4)
+
+    # 3. Key metrics TTM (EV/EBITDA, beta)
+    metrics = _fmp_get("key-metrics-ttm", {"symbol": ticker})
+    if metrics and isinstance(metrics, list) and metrics:
+        mt = metrics[0]
+        fields["ev_ebitda"] = _round(mt.get("evToEBITDATTM"))
+
+    # 4. Company profile for sector/industry/beta
+    profile = _fmp_get("profile", {"symbol": ticker})
+    if profile and isinstance(profile, list) and profile:
+        pr = profile[0]
+        fields["sector"] = pr.get("sector")
+        fields["industry"] = pr.get("industry")
+        fields["beta"] = _round(pr.get("beta"))
+
+    fields["_source"] = "fmp"
+    return ToolResult.ok({k: v for k, v in fields.items() if v is not None})
+
+
+def _fmp_history(ticker: str, period: str, interval: str) -> ToolResult | None:
+    """Try to get historical OHLCV from FMP."""
+    # Convert period to date range
+    today = datetime.now()
+    period_days = {
+        "1mo": 30, "3mo": 90, "6mo": 180,
+        "1y": 365, "2y": 730, "5y": 1825, "ytd": (today - datetime(today.year, 1, 1)).days,
+    }
+    days = period_days.get(period, 180)
+    from_date = (today - timedelta(days=days)).strftime("%Y-%m-%d")
+    to_date = today.strftime("%Y-%m-%d")
+
+    data = _fmp_get("historical-price-eod/full", {
+        "symbol": ticker, "from": from_date, "to": to_date,
+    })
+
+    if not data or not isinstance(data, list) or not data:
+        return None
+
+    # Sort by date ascending
+    data.sort(key=lambda x: x.get("date", ""))
+
+    # Downsample for weekly/monthly intervals
+    if interval == "1wk":
+        data = data[::5]
+    elif interval == "1mo":
+        data = data[::21]
+
+    # Cap at 60 rows
+    max_rows = 60
+    if len(data) > max_rows:
+        step = len(data) // max_rows
+        data = data[::step]
+
+    records = []
+    for row in data:
+        records.append({
+            "date": row.get("date", ""),
+            "open": round(row.get("open", 0), 2),
+            "high": round(row.get("high", 0), 2),
+            "low": round(row.get("low", 0), 2),
+            "close": round(row.get("close", 0), 2),
+            "volume": int(row.get("volume", 0)),
+        })
+
+    return ToolResult.ok({
+        "ticker": ticker.upper(),
+        "period": period,
+        "interval": interval,
+        "count": len(records),
+        "data": records,
+        "_source": "fmp",
+    })
+
+
+def _round(val, digits=2):
+    """Round a value if it's a number, else return None."""
+    if val is None:
+        return None
+    try:
+        return round(float(val), digits)
+    except (ValueError, TypeError):
+        return None
+
+
+# ── yfinance fallback ────────────────────────────────────────
+
+def _yf_quote(ticker: str) -> ToolResult:
+    """Fallback quote via yfinance."""
+    t = yf.Ticker(ticker)
+    info = t.info
+
+    if not info or info.get("trailingPegRatio") is None and info.get("regularMarketPrice") is None:
+        fi = t.fast_info
+        if fi is None:
+            return ToolResult.fail(
+                f"No data for ticker '{ticker}'",
+                hint="Check ticker symbol. A-shares use suffix .SS (Shanghai) or .SZ (Shenzhen).",
+            )
+        return ToolResult.ok({
+            "ticker": ticker.upper(),
+            "price": round(fi.last_price, 2) if fi.last_price else None,
+            "market_cap": fi.market_cap,
+            "currency": fi.currency,
+            "_source": "yfinance",
+        })
+
+    fields = {
+        "ticker": ticker.upper(),
+        "name": info.get("shortName"),
+        "price": info.get("regularMarketPrice") or info.get("currentPrice"),
+        "currency": info.get("currency"),
+        "market_cap": info.get("marketCap"),
+        "pe_trailing": info.get("trailingPE"),
+        "pe_forward": info.get("forwardPE"),
+        "ps": info.get("priceToSalesTrailing12Months"),
+        "pb": info.get("priceToBook"),
+        "ev_ebitda": info.get("enterpriseToEbitda"),
+        "dividend_yield": info.get("dividendYield"),
+        "beta": info.get("beta"),
+        "52w_high": info.get("fiftyTwoWeekHigh"),
+        "52w_low": info.get("fiftyTwoWeekLow"),
+        "50d_avg": info.get("fiftyDayAverage"),
+        "200d_avg": info.get("twoHundredDayAverage"),
+        "avg_volume": info.get("averageDailyVolume10Day"),
+        "sector": info.get("sector"),
+        "industry": info.get("industry"),
+        "_source": "yfinance",
+    }
+    return ToolResult.ok({k: v for k, v in fields.items() if v is not None})
+
+
+def _yf_history(ticker: str, period: str, interval: str) -> ToolResult:
+    """Fallback history via yfinance."""
+    t = yf.Ticker(ticker)
+    df = t.history(period=period, interval=interval)
+
+    if df.empty:
+        return ToolResult.fail(
+            f"No history for '{ticker}' (period={period})",
+            hint="Check ticker or try a different period.",
+        )
+
+    max_rows = 60
+    if len(df) > max_rows:
+        step = len(df) // max_rows
+        df = df.iloc[::step]
+
+    records = []
+    for date, row in df.iterrows():
+        records.append({
+            "date": date.strftime("%Y-%m-%d"),
+            "open": round(row["Open"], 2),
+            "high": round(row["High"], 2),
+            "low": round(row["Low"], 2),
+            "close": round(row["Close"], 2),
+            "volume": int(row["Volume"]),
+        })
+
+    return ToolResult.ok({
+        "ticker": ticker.upper(),
+        "period": period,
+        "interval": interval,
+        "count": len(records),
+        "data": records,
+        "_source": "yfinance",
+    })
+
+
+# ── Public API: FMP first, yfinance fallback ─────────────────
+
+def quote(ticker: str) -> ToolResult:
+    """Get current quote. Tries FMP first, falls back to yfinance."""
+    # Try FMP
+    result = _fmp_quote(ticker)
+    if result and result.status == "ok":
+        logger.debug(f"quote({ticker}): FMP success")
+        return result
+
+    # Fallback to yfinance
+    logger.info(f"quote({ticker}): FMP failed, falling back to yfinance")
+    try:
+        return _yf_quote(ticker)
+    except Exception as e:
+        return ToolResult.fail(f"All sources failed for quote({ticker}): {e}", recoverable=True)
 
 
 def history(ticker: str, period: str = "6mo", interval: str = "1d") -> ToolResult:
-    """Get historical OHLCV data via yfinance."""
+    """Get historical OHLCV. Tries FMP first, falls back to yfinance."""
+    # Try FMP
+    result = _fmp_history(ticker, period, interval)
+    if result and result.status == "ok" and result.data and result.data.get("count", 0) > 0:
+        logger.debug(f"history({ticker}): FMP success")
+        return result
+
+    # Fallback to yfinance
+    logger.info(f"history({ticker}): FMP failed, falling back to yfinance")
     try:
-        t = yf.Ticker(ticker)
-        df = t.history(period=period, interval=interval)
-
-        if df.empty:
-            return ToolResult.fail(
-                f"No history for '{ticker}' (period={period})",
-                hint="Check ticker or try a different period.",
-            )
-
-        # Downsample if too many rows to keep context lean
-        max_rows = 60
-        if len(df) > max_rows:
-            step = len(df) // max_rows
-            df = df.iloc[::step]
-
-        records = []
-        for date, row in df.iterrows():
-            records.append({
-                "date": date.strftime("%Y-%m-%d"),
-                "open": round(row["Open"], 2),
-                "high": round(row["High"], 2),
-                "low": round(row["Low"], 2),
-                "close": round(row["Close"], 2),
-                "volume": int(row["Volume"]),
-            })
-
-        return ToolResult.ok({
-            "ticker": ticker.upper(),
-            "period": period,
-            "interval": interval,
-            "count": len(records),
-            "data": records,
-        })
-
+        return _yf_history(ticker, period, interval)
     except Exception as e:
-        return ToolResult.fail(f"yfinance history error: {str(e)}", recoverable=True)
+        return ToolResult.fail(f"All sources failed for history({ticker}): {e}", recoverable=True)
 
 
-# Backward-compatible aliases (legacy names)
+# Backward-compatible aliases
 YF_QUOTE_SCHEMA = QUOTE_SCHEMA
 YF_HISTORY_SCHEMA = HISTORY_SCHEMA
 

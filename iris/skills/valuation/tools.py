@@ -113,7 +113,17 @@ def valuation(
     if run_dcf and not assumptions:
         return ToolResult.fail(
             "assumptions is required for dcf/full mode",
-            hint="Provide the full DCF assumptions object.",
+            hint=(
+                "You must build assumptions before calling dcf/full. Steps: "
+                "1) Use financials() to get revenue, margins, capex. "
+                "2) Use quote() for current price, shares outstanding, beta. "
+                "3) Use macro(series_id='DGS10') for risk-free rate. "
+                "4) Build assumptions object with: segments (revenue + growth_rates), "
+                "gross_margin, opex_pct_of_revenue, capex_pct_of_revenue, "
+                "da_pct_of_revenue, wacc, terminal_growth, shares_outstanding, "
+                "net_cash, current_price. "
+                "Or use mode='comps' which needs only ticker and peers."
+            ),
         )
 
     if run_comps and not target:
