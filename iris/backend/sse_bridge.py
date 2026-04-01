@@ -65,6 +65,8 @@ def _handle_tool_end(event: HarnessEvent) -> dict:
             "tool": event.data.get("tool"),
             "status": event.data.get("status"),
             "result": result,
+            "error": event.data.get("error"),
+            "hint": event.data.get("hint"),
         },
     }
 
@@ -163,9 +165,9 @@ def _handle_eval_end(event: HarnessEvent) -> dict:
         "data": {
             "round": event.data.get("round", 0),
             "passed": event.data.get("passed", False),
-            "score": event.data.get("score", 0),
-            "feedback": event.data.get("feedback", ""),
-            "issues": event.data.get("issues", []),
+            "verdict": event.data.get("verdict", ""),
+            "mustFix": event.data.get("must_fix", []),
+            "suggestions": event.data.get("suggestions", []),
         },
     }
 
