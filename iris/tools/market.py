@@ -21,9 +21,13 @@ logger = logging.getLogger(__name__)
 # yfinance's curl_cffi is not thread-safe; serialize all yf calls
 _yf_lock = threading.Lock()
 
-_FMP_KEY = os.getenv("FMP_API_KEY", "")
 _FMP_BASE = "https://financialmodelingprep.com/stable"
 _FMP_TIMEOUT = 10
+
+
+def _fmp_key() -> str:
+    """Lazy read so dotenv has time to load before first use."""
+    return os.getenv("FMP_API_KEY", "")
 
 
 QUOTE_SCHEMA = make_tool_schema(
@@ -72,12 +76,15 @@ HISTORY_SCHEMA = make_tool_schema(
 
 def _fmp_get(endpoint: str, params: dict | None = None) -> dict | list | None:
     """Call an FMP stable endpoint. Returns parsed JSON or None on failure."""
-    if not _FMP_KEY:
+    key = _fmp_key()
+    if not key:
+        logger.debug(f"FMP key empty, skipping {endpoint}")
         return None
     try:
-        p = {"apikey": _FMP_KEY, **(params or {})}
+        p = {"apikey": key, **(params or {})}
         r = httpx.get(f"{_FMP_BASE}/{endpoint}", params=p, timeout=_FMP_TIMEOUT)
         if r.status_code != 200:
+            logger.debug(f"FMP {endpoint} {p.get('symbol','')} returned {r.status_code}")
             return None
         data = r.json()
         # FMP returns error messages as dicts

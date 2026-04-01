@@ -150,17 +150,24 @@ def _mini_llm_tools_sync(
     messages = [{"role": "user", "content": prompt}]
     collected: list[dict] = []
 
-    for _ in range(max_rounds):
-        resp = client.chat.completions.create(
-            model=model,
-            messages=messages,
-            tools=tool_schemas or None,
-            tool_choice="auto" if tool_schemas else None,
-            temperature=0,
-        )
+    for round_i in range(max_rounds):
+        try:
+            resp = client.chat.completions.create(
+                model=model,
+                messages=messages,
+                tools=tool_schemas or None,
+                tool_choice="required" if tool_schemas and round_i == 0 else "auto",
+                temperature=0,
+            )
+        except Exception as e:
+            logger.warning(f"mini_llm_tools: LLM call failed round {round_i}: {e}")
+            break
+
         msg = resp.choices[0].message
         if not msg.tool_calls:
             break
+
+        logger.info(f"mini_llm_tools round {round_i}: {len(msg.tool_calls)} tool calls")
 
         # Append assistant message with tool_calls
         messages.append(msg.model_dump(exclude_none=True))
@@ -170,10 +177,19 @@ def _mini_llm_tools_sync(
             fn_args = json.loads(tc.function.arguments)
             tool = tool_map.get(fn_name)
             if tool:
-                result = tool.execute(fn_args)
+                try:
+                    result = tool.execute(fn_args)
+                except Exception as e:
+                    logger.warning(f"mini_llm_tools: tool {fn_name}({fn_args}) raised: {e}")
+                    result_dict = {"status": "error", "error": str(e)}
+                    messages.append({"role": "tool", "tool_call_id": tc.id,
+                                     "content": json.dumps(result_dict)})
+                    continue
                 result_dict = result.to_dict()
                 if result.status == "ok":
                     collected.append(result.data)
+                else:
+                    logger.warning(f"mini_llm_tools: tool {fn_name}({fn_args}) error: {result.error}")
             else:
                 result_dict = {"status": "error", "error": f"Unknown tool: {fn_name}"}
 
@@ -183,6 +199,7 @@ def _mini_llm_tools_sync(
                 "content": json.dumps(result_dict, ensure_ascii=False, default=str),
             })
 
+    logger.info(f"mini_llm_tools: collected {len(collected)} results")
     return collected
 
 
@@ -895,6 +912,7 @@ async def get_portfolio_api():
             f"Fetch current stock quotes for each of these tickers: {ticker_list}. "
             f"Call the quote tool once per ticker.",
             [quote_tool],
+            max_rounds=5,
         )
         for r in results:
             if isinstance(r, dict) and r.get("ticker") and r.get("price"):
@@ -979,6 +997,7 @@ async def get_watchlist():
         f"Fetch current stock quotes for each of these tickers: {ticker_list}. "
         f"Call the quote tool once per ticker.",
         [quote_tool],
+        max_rounds=5,
     )
 
     # Build ticker → quote data map from LLM tool results
