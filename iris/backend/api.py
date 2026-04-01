@@ -110,6 +110,95 @@ def _extract_metadata_via_llm(query: str, reasoning_text: str) -> dict:
         return {"ticker": None, "recommendation": None, "confidence": None}
 
 
+# ── Mini LLM tool-call loop (gpt-5.4-mini) ────────────────────
+
+def _get_mini_client():
+    """Create an OpenAI client for lightweight tool-call tasks."""
+    import os
+    from core.tracing import is_enabled as _lf_ok
+    try:
+        if _lf_ok():
+            from langfuse.openai import OpenAI
+        else:
+            from openai import OpenAI
+    except Exception:
+        from openai import OpenAI
+
+    return OpenAI(
+        api_key=os.getenv("OPENAI_API_KEY"),
+        base_url=os.getenv("OPENAI_BASE_URL"),
+    ), os.getenv("MINI_MODEL", "gpt-5.4-mini")
+
+
+def _mini_llm_tools_sync(
+    prompt: str,
+    tools: list,
+    max_rounds: int = 3,
+) -> list[dict]:
+    """Run a lightweight LLM tool-call loop.
+
+    Sends *prompt* to gpt-5.4-mini with the given Tool objects,
+    executes every tool_call the model emits, feeds results back,
+    and repeats until the model stops calling tools or *max_rounds*.
+
+    Returns the list of collected tool-result dicts (ToolResult.data).
+    """
+    client, model = _get_mini_client()
+    tool_schemas = [t.schema for t in tools]
+    tool_map = {t.name: t for t in tools}
+
+    messages = [{"role": "user", "content": prompt}]
+    collected: list[dict] = []
+
+    for _ in range(max_rounds):
+        resp = client.chat.completions.create(
+            model=model,
+            messages=messages,
+            tools=tool_schemas or None,
+            tool_choice="auto" if tool_schemas else None,
+            temperature=0,
+        )
+        msg = resp.choices[0].message
+        if not msg.tool_calls:
+            break
+
+        # Append assistant message with tool_calls
+        messages.append(msg.model_dump(exclude_none=True))
+
+        for tc in msg.tool_calls:
+            fn_name = tc.function.name
+            fn_args = json.loads(tc.function.arguments)
+            tool = tool_map.get(fn_name)
+            if tool:
+                result = tool.execute(fn_args)
+                result_dict = result.to_dict()
+                if result.status == "ok":
+                    collected.append(result.data)
+            else:
+                result_dict = {"status": "error", "error": f"Unknown tool: {fn_name}"}
+
+            messages.append({
+                "role": "tool",
+                "tool_call_id": tc.id,
+                "content": json.dumps(result_dict, ensure_ascii=False, default=str),
+            })
+
+    return collected
+
+
+async def _mini_llm_tools(
+    prompt: str,
+    tools: list,
+    max_rounds: int = 3,
+) -> list[dict]:
+    """Async wrapper — runs the sync LLM loop in a thread executor."""
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(
+        None,
+        functools.partial(_mini_llm_tools_sync, prompt, tools, max_rounds),
+    )
+
+
 def _classify_query_via_llm(query: str) -> dict:
     """Classify whether a query is a greeting/meta question or a real analysis request.
 
@@ -791,28 +880,25 @@ async def execute_trade(req: ExecuteTradeRequest):
 
 @app.get("/api/portfolio")
 async def get_portfolio_api():
-    """Get current paper portfolio state with live prices."""
+    """Get current paper portfolio state with LLM-driven live prices."""
     from skills.trading.tools import get_portfolio as _get_portfolio, _load_portfolio
-    from tools.market import quote as _quote
+    from tools.market import quote as quote_fn, QUOTE_SCHEMA
+    from tools.base import Tool
 
-    # Fetch live prices for all held tickers (same pattern as /api/watchlist)
     portfolio_raw = _load_portfolio()
     tickers = list(portfolio_raw.get("positions", {}).keys())
     live_prices = {}
     if tickers:
-        loop = asyncio.get_event_loop()
-
-        async def _fetch(t: str):
-            try:
-                qr = await loop.run_in_executor(None, functools.partial(_quote, t))
-                if qr.status == "ok" and qr.data.get("price"):
-                    return t, qr.data["price"]
-            except Exception:
-                pass
-            return t, None
-
-        results = await asyncio.gather(*[_fetch(t) for t in tickers])
-        live_prices = {t: p for t, p in results if p is not None}
+        quote_tool = Tool(quote_fn, QUOTE_SCHEMA)
+        ticker_list = ", ".join(tickers)
+        results = await _mini_llm_tools(
+            f"Fetch current stock quotes for each of these tickers: {ticker_list}. "
+            f"Call the quote tool once per ticker.",
+            [quote_tool],
+        )
+        for r in results:
+            if isinstance(r, dict) and r.get("ticker") and r.get("price"):
+                live_prices[r["ticker"].upper()] = r["price"]
 
     result = _get_portfolio(live_prices=live_prices)
     return result.data
@@ -877,31 +963,33 @@ async def delete_memory(memory_type: str, filename: str):
 
 @app.get("/api/watchlist")
 async def get_watchlist():
-    """Build watchlist from DB (structured data) + live quote prices."""
-    from tools.market import quote
+    """Build watchlist from DB (structured data) + LLM-driven live quotes."""
+    from tools.market import quote as quote_fn, QUOTE_SCHEMA
+    from tools.base import Tool
 
     retriever = _get_retriever()
     tickers = retriever.get_tracked_tickers()
     if not tickers:
         return []
 
-    loop = asyncio.get_event_loop()
+    # LLM decides which tools to call to fetch prices
+    quote_tool = Tool(quote_fn, QUOTE_SCHEMA)
+    ticker_list = ", ".join(tickers)
+    results = await _mini_llm_tools(
+        f"Fetch current stock quotes for each of these tickers: {ticker_list}. "
+        f"Call the quote tool once per ticker.",
+        [quote_tool],
+    )
 
-    async def fetch_quote(t: str) -> dict:
-        try:
-            result = await loop.run_in_executor(None, functools.partial(quote, t))
-            if result.status == "ok":
-                return result.data
-        except Exception:
-            pass
-        return {}
-
-    quotes = await asyncio.gather(*[fetch_quote(t) for t in tickers])
-    quote_map = {t: q for t, q in zip(tickers, quotes)}
+    # Build ticker → quote data map from LLM tool results
+    quote_map: dict[str, dict] = {}
+    for r in results:
+        if isinstance(r, dict) and r.get("ticker"):
+            quote_map[r["ticker"].upper()] = r
 
     watchlist = []
     for ticker in tickers:
-        quote = quote_map.get(ticker, {})
+        q = quote_map.get(ticker.upper(), {})
         val = retriever.get_latest_valuation(ticker)
         latest_run = retriever.get_latest_run_for_ticker(ticker)
         hyps = retriever.list_hypotheses(company=ticker)
@@ -920,14 +1008,14 @@ async def get_watchlist():
             elif val_data and isinstance(val_data, dict):
                 fair_value = val_data.get("fair_value")
 
-        market_price = quote.get("price")
+        market_price = q.get("price")
         gap = None
         if fair_value is not None and market_price is not None and market_price != 0:
             gap = round((fair_value - market_price) / market_price, 4)
 
         watchlist.append({
             "ticker": ticker,
-            "name": quote.get("name"),
+            "name": q.get("name"),
             "market_price": market_price,
             "fair_value": fair_value,
             "gap": gap,
