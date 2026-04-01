@@ -8,6 +8,7 @@ yfinance serves as a zero-cost fallback when FMP fails or quota is exhausted.
 
 import os
 import logging
+import threading
 from datetime import datetime, timedelta
 
 import httpx
@@ -16,6 +17,9 @@ import yfinance as yf
 from .base import ToolResult, make_tool_schema
 
 logger = logging.getLogger(__name__)
+
+# yfinance's curl_cffi is not thread-safe; serialize all yf calls
+_yf_lock = threading.Lock()
 
 _FMP_KEY = os.getenv("FMP_API_KEY", "")
 _FMP_BASE = "https://financialmodelingprep.com/stable"
@@ -206,7 +210,12 @@ def _round(val, digits=2):
 # ── yfinance fallback ────────────────────────────────────────
 
 def _yf_quote(ticker: str) -> ToolResult:
-    """Fallback quote via yfinance."""
+    """Fallback quote via yfinance (serialized to avoid curl_cffi TLS errors)."""
+    with _yf_lock:
+        return _yf_quote_inner(ticker)
+
+
+def _yf_quote_inner(ticker: str) -> ToolResult:
     t = yf.Ticker(ticker)
     info = t.info
 
@@ -251,7 +260,12 @@ def _yf_quote(ticker: str) -> ToolResult:
 
 
 def _yf_history(ticker: str, period: str, interval: str) -> ToolResult:
-    """Fallback history via yfinance."""
+    """Fallback history via yfinance (serialized to avoid curl_cffi TLS errors)."""
+    with _yf_lock:
+        return _yf_history_inner(ticker, period, interval)
+
+
+def _yf_history_inner(ticker: str, period: str, interval: str) -> ToolResult:
     t = yf.Ticker(ticker)
     df = t.history(period=period, interval=interval)
 
@@ -287,22 +301,59 @@ def _yf_history(ticker: str, period: str, interval: str) -> ToolResult:
     })
 
 
-# ── Public API: FMP first, yfinance fallback ─────────────────
+# ── httpx Yahoo Finance fallback (when curl_cffi fails) ──────
+
+def _httpx_yf_quote(ticker: str) -> ToolResult | None:
+    """Last-resort quote via Yahoo Finance chart API (pure httpx)."""
+    try:
+        url = f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}"
+        r = httpx.get(url, params={"range": "1d", "interval": "1d"},
+                      headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
+        if r.status_code != 200:
+            return None
+        meta = r.json().get("chart", {}).get("result", [{}])[0].get("meta", {})
+        price = meta.get("regularMarketPrice")
+        if not price:
+            return None
+        fields = {
+            "ticker": ticker.upper(), "name": meta.get("shortName"),
+            "price": price, "currency": meta.get("currency"),
+            "52w_high": meta.get("fiftyTwoWeekHigh"), "52w_low": meta.get("fiftyTwoWeekLow"),
+            "50d_avg": meta.get("fiftyDayAverage"), "200d_avg": meta.get("twoHundredDayAverage"),
+            "_source": "yahoo-httpx",
+        }
+        return ToolResult.ok({k: v for k, v in fields.items() if v is not None})
+    except Exception as e:
+        logger.debug(f"httpx Yahoo fallback failed for {ticker}: {e}")
+        return None
+
+
+# ── Public API: FMP → yfinance → httpx Yahoo ─────────────────
 
 def quote(ticker: str) -> ToolResult:
-    """Get current quote. Tries FMP first, falls back to yfinance."""
-    # Try FMP
+    """Get current quote. Tries FMP first, then yfinance, then httpx Yahoo."""
+    # 1. FMP
     result = _fmp_quote(ticker)
     if result and result.status == "ok":
         logger.debug(f"quote({ticker}): FMP success")
         return result
 
-    # Fallback to yfinance
-    logger.info(f"quote({ticker}): FMP failed, falling back to yfinance")
+    # 2. yfinance (curl_cffi, may fail on Windows)
+    logger.info(f"quote({ticker}): FMP failed, trying yfinance")
     try:
-        return _yf_quote(ticker)
+        result = _yf_quote(ticker)
+        if result and result.status == "ok":
+            return result
     except Exception as e:
-        return ToolResult.fail(f"All sources failed for quote({ticker}): {e}", recoverable=True)
+        logger.info(f"quote({ticker}): yfinance failed: {e}")
+
+    # 3. httpx Yahoo Finance (pure httpx, thread-safe)
+    logger.info(f"quote({ticker}): yfinance failed, trying httpx Yahoo")
+    result = _httpx_yf_quote(ticker)
+    if result:
+        return result
+
+    return ToolResult.fail(f"All sources failed for quote({ticker})", recoverable=True)
 
 
 def history(ticker: str, period: str = "6mo", interval: str = "1d") -> ToolResult:

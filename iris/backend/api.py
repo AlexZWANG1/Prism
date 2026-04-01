@@ -3,8 +3,9 @@ IRIS FastAPI backend — REST + SSE API wrapping the Harness agent loop.
 """
 from __future__ import annotations
 
+from pathlib import Path
 from dotenv import load_dotenv
-load_dotenv()
+load_dotenv(Path(__file__).parent.parent / ".env")
 
 import asyncio
 import functools
