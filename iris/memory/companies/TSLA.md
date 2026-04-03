@@ -1,8 +1,0 @@
-## TSLA updated analysis
-- Live quote used: $392.78/share, market cap about $1.47T.
-- FY2025 FMP financials: revenue $94.8B, gross profit $17.1B, gross margin 18.0%, operating income $4.36B, operating margin 4.6%, net income $3.79B, OCF $14.75B, capex $8.53B, FCF $6.22B.
-- Balance sheet remains strong with cash and short-term investments $44.1B vs total debt $8.38B, net cash about $35.7B.
-- Base DCF assumptions used: revenue growth 8/7/6/5/4%, gross margin 18.0%, opex 13.4% of revenue, tax 27.0%, capex 9.0% of revenue, working capital 1.0%, WACC 11%, terminal growth 3%.
-- build_dcf output: fair value -$16.06/share, implying severe overvaluation versus current price. However absolute value likely unreliable for TSLA because tool FCF construction appears to undercapture depreciation/non-cash support relative to reported positive OCF/FCF. Use DCF as directional only: today’s valuation requires much higher future margins/cash generation than current auto economics show.
-- Comps tool had limited multiple coverage, but TSLA gross margin 18.0% vs peer median ~9.2% supports a quality premium over auto peers. Even so, quote-based valuation remains stretched at ~15.5x sales, ~140x forward PE, and ~138x EV/EBITDA.
-- Investment conclusion: strong balance sheet and strategic optionality in autonomy/AI/energy, but current stock price already discounts substantial success. Stance: Hold for existing high-conviction believers; Avoid/New money unattractive absent a major pullback or hard evidence of durable margin reacceleration beyond auto business.

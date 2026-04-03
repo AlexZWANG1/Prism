@@ -13,4 +13,4 @@ Use the normal tools to complete a reflection loop.
 ## Key constraints
 - Do not invent data; anchor conclusions in recalled memory + latest numbers.
 - Focus on "why was I wrong/right" and "what to do differently next time".
-- Keep lessons concise, testable, and reusable in future analyses.
+- Use `remember` to write substantive notes — include data, reasoning, and lessons. Never save one-line fragments.

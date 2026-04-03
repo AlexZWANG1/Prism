@@ -25,15 +25,21 @@ _SOUL_DIR = Path(__file__).resolve().parent.parent / "soul"
 
 
 def _load_evaluator_prompt() -> str:
-    """Load evaluator prompt: Langfuse → local file → hardcoded fallback."""
-    from core.config import get_prompt
-    return get_prompt(
-        langfuse_name="iris-evaluator",
-        yaml_key="",  # no yaml fallback for evaluator
-        default=(_SOUL_DIR / "evaluator.md").read_text(encoding="utf-8")
-                if (_SOUL_DIR / "evaluator.md").exists()
-                else "You are a quality auditor for investment research. Cross-check conclusions against raw tool evidence. Return JSON: {passed, verdict, must_fix, suggestions, verified}.",
-    )
+    """Load evaluator prompt: local file → Langfuse → hardcoded fallback."""
+    from core.config import get_langfuse_prompt
+
+    # 1. Local file first
+    local = _SOUL_DIR / "evaluator.md"
+    if local.exists():
+        return local.read_text(encoding="utf-8")
+
+    # 2. Langfuse fallback
+    lf = get_langfuse_prompt("iris-evaluator")
+    if lf:
+        return lf
+
+    # 3. Hardcoded fallback
+    return "You are a quality auditor for investment research. Cross-check conclusions against raw tool evidence. Return JSON: {passed, verdict, must_fix, suggestions, verified}."
 
 
 # ── Data classes ─────────────────────────────────────────────

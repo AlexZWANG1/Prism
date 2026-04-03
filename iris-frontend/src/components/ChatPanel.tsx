@@ -205,9 +205,9 @@ export function ChatPanel() {
                   <p className="mt-2 text-[12px] leading-[1.7] text-[var(--t3)]">{pendingQuestion.context}</p>
                 )}
                 <div className="mt-4 flex flex-wrap gap-2">
-                  {pendingQuestion.options.map((option) => (
+                  {pendingQuestion.options.map((option, i) => (
                     <button
-                      key={option}
+                      key={`${option}-${i}`}
                       type="button"
                       onClick={() => void respondToInput(option)}
                       className="rounded-pill border border-[var(--ac-m)] bg-white px-3 py-2 text-[12px] font-medium text-[var(--ac)] transition-colors hover:bg-[var(--ac)] hover:text-white"

@@ -172,37 +172,19 @@ class ContextAssembler:
             examples = ", ".join(other_subjects[:5])
             sections.append(f"Previously researched subjects include {examples}. Use recall if needed.")
 
-        # Unified memory: inject knowledge_items if available
+        # Unified memory: inject prior notes if available
         try:
             from tools.unified_memory import auto_recall_for_context
-            unified = auto_recall_for_context(retriever, subject or "")
-            if unified:
-                if unified.get("experiences", {}).get("warnings"):
-                    lines = ["### Experience Warnings"]
-                    for w in unified["experiences"]["warnings"][:5]:
-                        lines.append(f"- **[WARNING]** {w.get('content', '')} (confidence: {w.get('confidence', 'N/A')})")
-                    sections.append("\n".join(lines))
-                if unified.get("experiences", {}).get("golden"):
-                    lines = ["### Golden Experiences"]
-                    for g in unified["experiences"]["golden"][:5]:
-                        lines.append(f"- {g.get('content', '')}")
-                    sections.append("\n".join(lines))
-                if unified.get("notes"):
-                    lines = ["### Prior Analysis Notes"]
-                    for n in unified["notes"][:3]:
-                        snippet = n.get("content", "")[:200]
-                        lines.append(f"- **{n.get('subject', '')}**: {snippet}")
-                    sections.append("\n".join(lines))
-                if unified.get("pending_predictions"):
-                    lines = ["### Pending Prediction Reviews"]
-                    for p in unified["pending_predictions"]:
-                        lines.append(
-                            f"- **{p.get('subject', '')}** {p.get('metric', 'fair_value')}: "
-                            f"predicted ${p.get('predicted', 'N/A')} — review overdue"
-                        )
-                    sections.append("\n".join(lines))
+            notes = auto_recall_for_context(retriever, subject or "")
+            if notes:
+                lines = ["### Prior Notes (process context only — always re-fetch live data, never reuse numbers from these notes)"]
+                for n in notes[:5]:
+                    snippet = (n.get("content", "") or "")[:300]
+                    created = (n.get("created_at") or "")[:10]
+                    lines.append(f"- [{created}] {snippet}")
+                sections.append("\n".join(lines))
         except Exception:
-            pass  # unified memory injection is best-effort
+            pass  # memory injection is best-effort
 
         if not sections:
             return []
@@ -245,9 +227,9 @@ class ContextAssembler:
         if strategy == "llm_summary" and budget.reserve_round("compaction"):
             max_chars = get("compaction.summary_max_input_chars", 50000)
             summary_prompt = (
-                get_langfuse_prompt("iris-compaction-summary")
-                or get("compaction.summary_prompt",
-                       "Summarize this conversation concisely. Preserve key data, decisions, and IDs.")
+                get("compaction.summary_prompt")
+                or get_langfuse_prompt("iris-compaction-summary")
+                or "Summarize this conversation concisely. Preserve key data, decisions, and IDs."
             )
             content = json.dumps(old_messages, ensure_ascii=False)
             if len(content) > max_chars:
@@ -284,9 +266,9 @@ class ContextAssembler:
             return
 
         flush_prompt = (
-            get_langfuse_prompt("iris-memory-flush")
-            or get("compaction.memory_flush.prompt",
-                   "Context is about to be compacted. Save any key findings using available tools.")
+            get("compaction.memory_flush.prompt")
+            or get_langfuse_prompt("iris-memory-flush")
+            or "Context is about to be compacted. Save any key findings using available tools."
         )
         flush_messages = messages + [{"role": "user", "content": f"[MEMORY FLUSH] {flush_prompt}"}]
         tool_schemas = [t.schema for t in knowledge_tools]

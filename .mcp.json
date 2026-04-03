@@ -8,6 +8,17 @@
         "chrome-devtools-mcp@latest"
       ],
       "env": {}
+    },
+    "notion": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@notionhq/notion-mcp-server"
+      ],
+      "env": {
+        "NOTION_TOKEN": "ntn_j60430427904sByNX6osfvfIZJ1TtVXzWsC46El75AKbLW"
+      }
     }
   }
 }

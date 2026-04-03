@@ -165,6 +165,17 @@ def parse_pdf(
       - Explicit: use the specified engine, fall back if unavailable
     """
     if engine == ParseEngine.AUTO:
+        # Check config preference
+        try:
+            from core.config import load_config
+            preferred = load_config().get("knowledge", {}).get("pdf_engine", "")
+        except Exception:
+            preferred = ""
+
+        if preferred == "docling" and _has_docling():
+            return _parse_pdf_docling(pdf_bytes)
+
+        # Default: pymupdf > docling > pypdf2
         if _has_pymupdf():
             return _parse_pdf_pymupdf(pdf_bytes)
         if _has_docling():
@@ -200,42 +211,112 @@ def parse_excel(
 ) -> ParseResult:
     """Parse Excel (.xlsx/.xls/.csv) into Markdown tables.
 
-    This is the same approach ChatGPT uses internally:
-    pandas reads the sheets, we convert to Markdown tables.
+    For .xlsx: uses openpyxl first for structure + formula extraction,
+    falls back to pandas for .xls/.csv or on error.
     """
+    ext = Path(filename).suffix.lower()
+
+    # CSV/TSV/XLS: pandas-only path
+    if ext in (".csv", ".tsv", ".xls"):
+        return _parse_excel_pandas(file_bytes, filename, ext, max_rows)
+
+    # .xlsx: openpyxl with formula awareness
+    try:
+        return _parse_excel_openpyxl(file_bytes, max_rows)
+    except Exception:
+        logger.debug("openpyxl parse failed, falling back to pandas")
+        return _parse_excel_pandas(file_bytes, filename, ext, max_rows)
+
+
+def _parse_excel_openpyxl(file_bytes: bytes, max_rows: int) -> ParseResult:
+    """Parse .xlsx with openpyxl — preserves sheet names and formulas."""
+    from openpyxl import load_workbook
+
+    wb = load_workbook(io.BytesIO(file_bytes), data_only=False)
+    sections: list[str] = []
+    total_rows = 0
+    warnings: list[str] = []
+
+    for sheet_name in wb.sheetnames:
+        ws = wb[sheet_name]
+        sections.append(f"## Sheet: {sheet_name}\n")
+
+        formula_cells: list[str] = []
+        rows_data: list[list[str]] = []
+
+        for row_idx, row in enumerate(ws.iter_rows(values_only=False)):
+            if row_idx >= max_rows:
+                warnings.append(f"Sheet '{sheet_name}' truncated to {max_rows} rows")
+                break
+            row_vals: list[str] = []
+            for cell in row:
+                if isinstance(cell.value, str) and cell.value.startswith("="):
+                    formula_cells.append(f"{cell.coordinate}: `{cell.value}`")
+                    row_vals.append(cell.value)
+                else:
+                    row_vals.append(str(cell.value) if cell.value is not None else "")
+            rows_data.append(row_vals)
+
+        total_rows += len(rows_data)
+
+        if rows_data:
+            ncols = max(len(r) for r in rows_data)
+            # Pad rows to same width
+            for r in rows_data:
+                while len(r) < ncols:
+                    r.append("")
+            header = "| " + " | ".join(rows_data[0]) + " |"
+            sep = "| " + " | ".join(["---"] * ncols) + " |"
+            body = "\n".join("| " + " | ".join(r) + " |" for r in rows_data[1:])
+            sections.append(f"{header}\n{sep}\n{body}\n")
+
+        if formula_cells:
+            sections.append(f"\n**Formulas in {sheet_name}:**\n")
+            for fc in formula_cells[:20]:
+                sections.append(f"- {fc}")
+            if len(formula_cells) > 20:
+                sections.append(f"- ... and {len(formula_cells) - 20} more")
+            sections.append("")
+
+    return ParseResult(
+        content="\n".join(sections),
+        engine_used="openpyxl",
+        page_count=len(wb.sheetnames),
+        metadata={"sheets": wb.sheetnames, "total_rows": total_rows},
+        warnings=warnings,
+    )
+
+
+def _parse_excel_pandas(
+    file_bytes: bytes, filename: str, ext: str, max_rows: int
+) -> ParseResult:
+    """Fallback pandas parser for .xls/.csv/.tsv."""
     import pandas as pd
 
-    ext = Path(filename).suffix.lower()
-    warnings = []
+    warnings: list[str] = []
 
-    if ext == ".csv":
+    if ext in (".csv", ".tsv"):
         df = pd.read_csv(io.BytesIO(file_bytes), nrows=max_rows)
         sheets = {"Sheet1": df}
     else:
         sheets = pd.read_excel(
-            io.BytesIO(file_bytes),
-            sheet_name=None,
-            nrows=max_rows,
+            io.BytesIO(file_bytes), sheet_name=None, nrows=max_rows,
         )
 
-    md_parts = []
+    md_parts: list[str] = []
     total_rows = 0
 
     for sheet_name, df in sheets.items():
         total_rows += len(df)
-        if len(sheets) > 1:
-            md_parts.append(f"## {sheet_name}\n")
-
-        # Summary stats
+        md_parts.append(f"## Sheet: {sheet_name}\n")
         md_parts.append(f"Rows: {len(df)}, Columns: {len(df.columns)}\n")
 
         if len(df) > max_rows:
             df = df.head(max_rows)
             warnings.append(f"Sheet '{sheet_name}' truncated to {max_rows} rows")
 
-        # Convert to Markdown table
         md_parts.append(df.to_markdown(index=False))
-        md_parts.append("")  # blank line
+        md_parts.append("")
 
     return ParseResult(
         content="\n".join(md_parts),

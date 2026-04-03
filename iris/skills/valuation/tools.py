@@ -21,8 +21,12 @@ VALUATION_SCHEMA = make_tool_schema(
     properties={
         "mode": {
             "type": "string",
-            "enum": ["dcf", "comps", "full"],
-            "description": "Valuation mode. Use 'full' for DCF + peer cross-check in one call.",
+            "enum": ["dcf", "comps", "full", "export_excel"],
+            "description": (
+                "Valuation mode. 'dcf': run DCF model. 'comps': peer multiples. "
+                "'full': DCF + comps cross-check. "
+                "'export_excel': generate Excel workbook with live formulas from DCF result."
+            ),
         },
         "ticker": {
             "type": "string",
@@ -97,7 +101,7 @@ def valuation(
     from skills.dcf.tools import build_dcf, get_comps
 
     mode = (mode or "").lower().strip()
-    if mode not in {"dcf", "comps", "full"}:
+    if mode not in {"dcf", "comps", "full", "export_excel"}:
         return ToolResult.fail(
             f"Invalid mode: {mode}",
             hint="Use one of: dcf, comps, full",
@@ -106,6 +110,35 @@ def valuation(
     assumptions = assumptions or {}
     peers = peers or []
     target = _infer_ticker(ticker, assumptions)
+
+    # ── export_excel: generate workbook from DCF result ──
+    if mode == "export_excel":
+        if not assumptions:
+            return ToolResult.fail("assumptions required for export_excel")
+        dcf_result = build_dcf(assumptions=assumptions)
+        if dcf_result.status != "ok":
+            return ToolResult.fail(_first_error(dcf_result, "DCF failed"))
+
+        import tempfile, os
+        from skills.dcf.excel_export import export_dcf_excel
+
+        comps_data_for_excel = None
+        if target and peers:
+            comps_r = get_comps(ticker=target, peers=peers)
+            if comps_r.status == "ok":
+                comps_data_for_excel = comps_r.data
+
+        fd, path = tempfile.mkstemp(suffix=".xlsx", prefix=f"dcf_{target}_")
+        os.close(fd)
+        export_dcf_excel(dcf_result.data, assumptions, path, comps_data_for_excel)
+
+        return ToolResult.ok({
+            "mode": "export_excel",
+            "ticker": target,
+            "excel_path": path,
+            "fair_value_per_share": dcf_result.data.get("fair_value_per_share"),
+            **dcf_result.data,
+        })
 
     run_dcf = mode in {"dcf", "full"}
     run_comps = mode in {"comps", "full"}

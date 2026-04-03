@@ -175,7 +175,6 @@ def build_harness(
             # Deep research config
             deep_research=config_get("deep_research.enabled", False),
             max_eval_rounds=config_get("deep_research.max_eval_rounds", 5),
-            eval_pass_threshold=config_get("deep_research.eval_pass_threshold", 3.0),
             min_tools_for_eval=config_get("deep_research.min_tools_for_eval", 2),
         ),
         on_event=on_event,

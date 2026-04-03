@@ -93,6 +93,187 @@ da_pct_of_revenue:   cash-flow-statement → D&A / Revenue
 
 ---
 
+## 三表联动推导框架（P&L → BS → CF → DCF）
+
+**DCF 的假设不是独立参数 — 它们是三张报表的联动结果。** 推导顺序：
+
+### Step 1: 搭建 P&L (Income Statement)
+
+从 `financials(ticker, 'income-statement')` 拿到历史，然后逐年预测：
+
+```
+Revenue        = Σ(segments × growth_rates)          ← 你已经在做
+COGS           = Revenue × (1 - gross_margin)
+Gross Profit   = Revenue - COGS
+SGA            = Revenue × sga_pct                    ← 新参数（可选）
+R&D            = Revenue × rd_pct                     ← 新参数（可选）
+Total OpEx     = SGA + R&D  (或直接用 opex_pct_of_revenue)
+EBIT           = Gross Profit - Total OpEx
+Interest Exp   = Avg Debt × cost_of_debt              ← 从 BS 联动
+EBT            = EBIT - Interest Expense
+Tax            = EBT × tax_rate
+Net Income     = EBT - Tax
+```
+
+**可选拆分**: 如果你有 SGA 和 R&D 的历史数据，分开建模更精确。
+否则用 `opex_pct_of_revenue` 一把搞定（当前做法不变）。
+
+### Step 2: 搭建 BS (Balance Sheet)
+
+从 `financials(ticker, 'balance-sheet-statement')` 拿到历史，用 Revenue 驱动：
+
+```
+Working Capital 资产:
+  Accounts Receivable = Revenue × days_receivable / 365
+  Inventory           = COGS × days_inventory / 365
+  Prepaid & Other     = Revenue × other_ca_pct
+
+Working Capital 负债:
+  Accounts Payable    = COGS × days_payable / 365
+  Accrued Liabilities = Revenue × accrued_pct
+
+Net Working Capital   = (AR + Inventory + Prepaid) - (AP + Accrued)
+ΔWC                   = NWC(t) - NWC(t-1)                ← 回到 CF
+
+固定资产:
+  PP&E(t)  = PP&E(t-1) + CapEx - D&A                     ← 从 CF 联动
+
+Debt Schedule:
+  Total Debt(t) = Total Debt(t-1) + New Issuance - Repayment
+  Cash(t) = Cash(t-1) + Net CF (from CF statement)
+```
+
+**简化选项**: 如果你不想拆分 WC 明细，仍可用
+`working_capital_change_pct` × Revenue 一步到位。但如果知识库里有卖方模型
+的 WC 明细，优先用明细数据。
+
+### Step 3: 搭建 CF (Cash Flow Statement)
+
+```
+Operating CF:
+  Net Income
+  + D&A                    (非现金费用加回)
+  + Stock-Based Comp       (sbc_pct × Revenue, 可选)
+  - ΔWC                    (从 BS 联动)
+  = CFO
+
+Investing CF:
+  - CapEx                  (capex_pct × Revenue)
+  = CFI
+
+Financing CF:
+  - Debt Repayment
+  + New Debt Issuance
+  - Dividends              (可选)
+  - Buybacks               (可选)
+  = CFF
+
+Free Cash Flow (for DCF):
+  FCF = NOPAT + D&A - CapEx - ΔWC     ← 当前公式不变
+  或 FCF = CFO - CapEx                  ← 等价（unlevered 用第一个）
+```
+
+### 联动检查
+
+每次调 DCF 前，在 `<thinking>` 中确认三表平衡：
+
+```
+✓ BS 平衡: Total Assets = Total Liabilities + Equity
+✓ CF 回连 BS: Cash(t) = Cash(t-1) + CFO + CFI + CFF
+✓ NI 联动: P&L Net Income = CF 起点
+✓ D&A 联动: CF 中加回的 D&A = P&L 中计提的 D&A
+✓ CapEx 联动: CF 中 CapEx = BS 中 PP&E 变动 + D&A
+```
+
+**如果你只想做简单 DCF（不建三表），当前的参数集完全够用。**
+三表推导是在复杂场景下确保假设一致性的方法，不是必须的。
+
+---
+
+## 卖方数据对比协议
+
+**你的假设必须与市场做对比。** 如果用户上传了卖方研报或 Excel 模型，
+用 `search_knowledge` 提取卖方预期，作为 sanity check。
+
+### 数据获取（按优先级）
+
+```
+1. MCP 数据源 (如果配置了):
+   - Daloopa / FactSet / Morningstar → 直接结构化数据
+   - 最准确，无需解析
+
+2. 用户上传的卖方研报/Excel:
+   - search_knowledge("XX公司 revenue forecast")
+   - search_knowledge("XX公司 DCF assumptions WACC")
+   - search_knowledge("XX公司 target price consensus")
+   - 提取关键数字: Y1-Y3 revenue growth, margin, WACC, target price
+
+3. IRIS 内置工具:
+   - financials() → 历史数据
+   - quote() → 市场数据
+   - macro() → 宏观指标
+
+4. Web search (最后选择):
+   - web_search("NVDA consensus revenue estimate 2026")
+   - 仅用于验证，不作为主要来源
+```
+
+### 对比输出格式
+
+在分析结论中，如果有卖方数据，必须展示对比表：
+
+```
+| 假设 | IRIS (本次) | 卖方一致预期 | 偏差 | 说明 |
+|------|-----------|------------|------|------|
+| Y1 Revenue Growth | 45% | 38% | +7pp | IRIS 更看好 AI capex cycle |
+| Gross Margin | 73% | 72% | +1pp | 基本一致 |
+| WACC | 11.0% | 10.5% | +0.5pp | IRIS 稍保守 |
+| Target Price | $185 | $200 | -8% | 卖方更乐观 |
+```
+
+### 偏差解读
+
+```
+偏差 < ±10%:  假设合理，与市场共识一致
+偏差 ±10-25%: 需要在分析中明确解释原因
+偏差 > ±25%:  重大偏离 — 必须说明你的独立判断依据
+```
+
+**不要无脑跟卖方。** 卖方预期是 anchor，不是答案。
+你的分析价值在于独立判断 + 透明假设。
+
+---
+
+## 多数据源使用指导
+
+IRIS 支持多种数据来源。根据可用性和准确度选择：
+
+### 数据源优先级矩阵
+
+| 数据类型 | 首选来源 | 备选来源 | 注意事项 |
+|---------|---------|---------|---------|
+| 历史财务数据 | `financials()` (FMP API) | 知识库中的卖方 Excel | FMP 数据标准化程度高 |
+| 实时市场数据 | `quote()` | Web search | quote() 有 15min 延迟 |
+| 宏观指标 | `macro()` (FRED) | Web search | FRED 覆盖全面 |
+| 一致预期/估计 | `search_knowledge()` 卖方研报 | Web search | 优先用已上传的材料 |
+| Segment 收入拆分 | `financials(type='segments')` | SEC filing, 卖方研报 | 某些公司不披露 |
+| 管理层 Guidance | `search_knowledge()` 电话会纪要 | Web search | 关注措辞变化 |
+| Peer 选择 | `get_comps()` 自动 | 卖方研报的 peer group | 优先用卖方定义的 peer |
+
+### 使用 search_knowledge 的时机
+
+```
+每次建 DCF 前，如果知识库不为空，主动搜索一次:
+  search_knowledge("{ticker} revenue growth forecast")
+  search_knowledge("{ticker} DCF assumptions")
+  search_knowledge("{ticker} target price")
+
+如果有结果 → 提取关键数字，在 <thinking> 中与自己的推导对比
+如果无结果 → 跳过，正常推导
+```
+
+---
+
 ## 场景分析（Bear / Base / Bull）
 
 **每次估值必须给三个场景，不能只给一个数字。**

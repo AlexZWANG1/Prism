@@ -347,22 +347,23 @@ def extract_metadata_with_ai(
             "content_excerpt": excerpt,
         }
 
+        from core.config import get_prompt
+        article_meta_prompt = get_prompt(
+            "iris-article-metadata",
+            "prompts.article_metadata",
+            "Extract metadata from article content. Return strict JSON only with keys: "
+            "title, summary, content_type, category, industry, source_name, published_at, tags, companies, language, confidence. "
+            "Rules: "
+            "category must be one of: research (研报/行业分析), interview (专家访谈/管理层交流), paper (学术论文/白皮书), note (笔记/备忘), other; "
+            "industry is a short label like '半导体', '云计算', '新能源汽车', 'SaaS', 'Fintech' — use the most specific applicable term; "
+            "published_at must be ISO8601 or null; tags/companies are arrays of strings; "
+            "confidence is 0-1 float.",
+        )
         response = client.chat.completions.create(
             model=model,
             temperature=0,
             messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        "Extract metadata from article content. Return strict JSON only with keys: "
-                        "title, summary, content_type, category, industry, source_name, published_at, tags, companies, language, confidence. "
-                        "Rules: "
-                        "category must be one of: research (研报/行业分析), interview (专家访谈/管理层交流), paper (学术论文/白皮书), note (笔记/备忘), other; "
-                        "industry is a short label like '半导体', '云计算', '新能源汽车', 'SaaS', 'Fintech' — use the most specific applicable term; "
-                        "published_at must be ISO8601 or null; tags/companies are arrays of strings; "
-                        "confidence is 0-1 float."
-                    ),
-                },
+                {"role": "system", "content": article_meta_prompt},
                 {"role": "user", "content": json.dumps(prompt, ensure_ascii=False)},
             ],
         )

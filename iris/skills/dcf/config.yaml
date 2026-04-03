@@ -5,3 +5,15 @@ comps_outlier_threshold: 0.50
 sensitivity:
   wacc_steps: [-0.02, -0.01, 0, 0.01, 0.02]
   growth_steps: [-0.01, -0.005, 0, 0.005, 0.01]
+
+# Three-statement defaults (used when LLM doesn't provide explicit values)
+bs_defaults:
+  days_receivable: 45
+  days_inventory: 30
+  days_payable: 35
+  sbc_pct: 0.02
+
+# Excel export
+excel:
+  enabled: true
+  auto_export: false  # if true, every DCF run also generates Excel

@@ -107,12 +107,12 @@ export function SearchBar({
                 background: deepResearch ? "rgba(245,158,11,0.08)" : "var(--bg)",
                 color: deepResearch ? "var(--amber)" : "var(--t2)",
               }}
-              title="开启后分析结果将经过独立质量审核，发现问题自动修正"
+              title="开启双Agent模式：Generator 自主研究 → Evaluator 独立校验数字，发现问题自动修正"
             >
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
-              质量审核
+              双Agent模式
             </button>
           )}
         </div>

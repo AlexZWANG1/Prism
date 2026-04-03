@@ -100,7 +100,6 @@ class HarnessConfig:
     # Deep research (evaluator loop)
     deep_research: bool = False
     max_eval_rounds: int = 5
-    eval_pass_threshold: float = 3.0
     min_tools_for_eval: int = 2
 
 
@@ -499,7 +498,6 @@ class Harness:
         evaluator = Evaluator(
             llm=self.llm,
             config=EvaluatorConfig(
-                pass_threshold=self.config.eval_pass_threshold,
                 min_tools_for_eval=self.config.min_tools_for_eval,
             ),
             run_dir=run_dir,
@@ -549,32 +547,37 @@ class Harness:
             run_dir.write_state({
                 "round": round_num,
                 "status": "passed" if eval_result.passed else "eval_failed",
-                "eval_score": eval_result.overall_score,
-                "eval_feedback": eval_result.feedback,
+                "verdict": eval_result.verdict,
+                "must_fix": eval_result.must_fix,
                 "tools_called": [t["tool"] for t in tool_log if t.get("status") == "ok"],
             })
 
             self._emit(EventType.EVAL_END, {
                 "round": eval_round,
                 "passed": eval_result.passed,
-                "score": eval_result.overall_score,
-                "feedback": eval_result.feedback,
-                "issues": [i.to_dict() for i in eval_result.issues],
+                "verdict": eval_result.verdict,
+                "must_fix": eval_result.must_fix,
+                "suggestions": eval_result.suggestions,
+                "verified": eval_result.verified,
             })
 
             if eval_result.passed:
-                result.budget_breakdown["eval_scores"] = eval_result.to_dict()
+                result.budget_breakdown["eval_result"] = eval_result.to_dict()
                 result.budget_breakdown["eval_rounds"] = round_num
                 return result
 
-            # ── FAIL: inject feedback for next round ──
+            # ── FAIL: inject must_fix items into Generator messages ──
             if eval_round < self.config.max_eval_rounds - 1:
                 feedback = (
                     f"[EVALUATOR FEEDBACK — Round {round_num}]\n"
-                    f"Score: {eval_result.overall_score}/5.0 (need ≥{self.config.eval_pass_threshold})\n\n"
-                    f"Issues found:\n{eval_result.feedback}\n\n"
-                    "Please fix these specific issues and regenerate the analysis. "
-                    "Verify your numbers against the tool data before concluding."
+                    f"Verdict: {eval_result.verdict}\n\n"
+                    f"You MUST fix these issues before your analysis can pass:\n"
+                )
+                for i, fix in enumerate(eval_result.must_fix, 1):
+                    feedback += f"  {i}. {fix}\n"
+                feedback += (
+                    "\nRegenerate the analysis with these corrections. "
+                    "Verify every number against the tool data."
                 )
                 messages.append({"role": "user", "content": feedback})
 

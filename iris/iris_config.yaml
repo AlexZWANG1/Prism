@@ -62,7 +62,6 @@ harness:
 deep_research:
   enabled: false              # default off; pass deep_research=true per request
   max_eval_rounds: 5
-  eval_pass_threshold: 3.0
   min_tools_for_eval: 2
 
 budget:
@@ -110,6 +109,7 @@ memory:
 knowledge:
   chunk_size: 800
   chunk_overlap: 200
+  pdf_engine: docling      # docling for financial table accuracy; fallback to pymupdf
 
 # ── LLM utility prompts (非 soul 层，是辅助提取/判断用的指令) ──
 prompts:

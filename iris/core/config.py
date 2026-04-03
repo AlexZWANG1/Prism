@@ -89,18 +89,18 @@ def load_soul(soul_dir: Path = None, file_list: list[str] = None) -> str:
 
     parts: list[str] = []
     for name in names:
-        # Try Langfuse first
-        lf_prompt = get_langfuse_prompt(f"iris-soul-{name}")
-        if lf_prompt:
-            log.debug("Soul '%s' loaded from Langfuse", name)
-            parts.append(lf_prompt)
-            continue
-
-        # Fallback to local file
+        # Local file first — git-trackable, edit-and-go
         local = soul_dir / f"{name}.md"
         if local.exists():
             log.debug("Soul '%s' loaded from local file", name)
             parts.append(local.read_text(encoding="utf-8"))
+            continue
+
+        # Fallback to Langfuse (remote, for future A/B testing)
+        lf_prompt = get_langfuse_prompt(f"iris-soul-{name}")
+        if lf_prompt:
+            log.debug("Soul '%s' loaded from Langfuse", name)
+            parts.append(lf_prompt)
 
     return "\n\n---\n\n".join(parts) if parts else FALLBACK_SOUL
 
@@ -180,22 +180,24 @@ def get_langfuse_prompt(name: str, label: str = "production") -> str | None:
 def get_prompt(langfuse_name: str, yaml_key: str, default: str = "") -> str:
     """统一的 prompt 获取入口。
 
-    优先级: Langfuse production → yaml → default
+    优先级: yaml (本地) → Langfuse → hardcoded default
+    本地优先，确保改文件即生效、git 可追踪。
+    Langfuse 作为远程 fallback，未来可用于 A/B 测试。
 
     Args:
         langfuse_name: Langfuse 上的 prompt 名字，如 "iris-ticker-extraction"
         yaml_key: iris_config.yaml 里的 dot-path，如 "prompts.ticker_extraction"
         default: 都没有时的硬编码兜底
     """
-    # 1. Try Langfuse
-    prompt = get_langfuse_prompt(langfuse_name)
-    if prompt:
-        return prompt
-
-    # 2. Fall back to yaml
+    # 1. Local yaml first
     yaml_val = get(yaml_key)
     if yaml_val:
         return str(yaml_val).strip()
+
+    # 2. Fall back to Langfuse
+    prompt = get_langfuse_prompt(langfuse_name)
+    if prompt:
+        return prompt
 
     # 3. Hardcoded default
     return default

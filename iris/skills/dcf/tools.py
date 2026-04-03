@@ -71,7 +71,19 @@ BUILD_DCF_SCHEMA = make_tool_schema(
                 "  da_pct_of_revenue (D&A / revenue — from cash-flow-statement depreciationAndAmortization / revenue; "
                 "if omitted, defaults to capex_pct which may overstate D&A for companies in heavy investment phases),\n"
                 "  working_capital_change_pct (all as {value: float} or [float per year]),\n"
-                "  scenarios (array for probability-weighted analysis)."
+                "  scenarios (array for probability-weighted analysis).\n\n"
+                "Three-statement detail fields (all optional, {value: float} or [float per year]):\n"
+                "  days_receivable — AR days (revenue/365*days → accounts receivable),\n"
+                "  days_inventory — inventory days (COGS/365*days → inventory),\n"
+                "  days_payable — AP days (COGS/365*days → accounts payable),\n"
+                "  sga_pct_of_revenue — SG&A as fraction of revenue,\n"
+                "  rd_pct_of_revenue — R&D as fraction of revenue,\n"
+                "  sbc_pct_of_revenue — stock-based compensation as fraction of revenue.\n"
+                "  When days_receivable/inventory/payable are provided, NWC is computed from\n"
+                "  AR + Inventory - AP instead of working_capital_change_pct.\n\n"
+                "Sell-side comparison (optional):\n"
+                "  sell_side_anchor — {source, y1_revenue_growth, gross_margin, wacc, target_price}.\n"
+                "  Passed through to output for comparison display; does NOT affect DCF computation."
             ),
         },
     },
@@ -98,6 +110,17 @@ GET_COMPS_SCHEMA = make_tool_schema(
 
 
 # ── Helpers ──────────────────────────────────────────────────
+
+def _resolve_optional_per_year(param: Any, n_years: int) -> list[float] | None:
+    """Like _resolve_per_year but returns None when param is absent (signals 'not provided')."""
+    if param is None:
+        return None
+    if isinstance(param, dict):
+        return [param.get("value", 0)] * n_years
+    if isinstance(param, list):
+        return [float(v) for v in param]
+    return [float(param)] * n_years
+
 
 def _resolve_per_year(param: Any, n_years: int, default_value: float) -> list[float]:
     """Resolve a parameter that can be a single-value dict, a list, or None."""
@@ -203,6 +226,14 @@ def build_dcf(assumptions: dict) -> ToolResult:
         assumptions.get("working_capital_change_pct"), projection_years, 0.01
     )
 
+    # ── Optional three-statement detail params ──
+    days_receivable = _resolve_optional_per_year(assumptions.get("days_receivable"), projection_years)
+    days_inventory = _resolve_optional_per_year(assumptions.get("days_inventory"), projection_years)
+    days_payable = _resolve_optional_per_year(assumptions.get("days_payable"), projection_years)
+    sga_pct = _resolve_optional_per_year(assumptions.get("sga_pct_of_revenue"), projection_years)
+    rd_pct = _resolve_optional_per_year(assumptions.get("rd_pct_of_revenue"), projection_years)
+    sbc_pct = _resolve_optional_per_year(assumptions.get("sbc_pct_of_revenue"), projection_years)
+
     # ── Compute base-case DCF ──
     result = _compute_dcf(
         segments=segments,
@@ -218,6 +249,12 @@ def build_dcf(assumptions: dict) -> ToolResult:
         net_cash=net_cash,
         shares_outstanding=shares_outstanding,
         current_price=current_price,
+        days_receivable=days_receivable,
+        days_inventory=days_inventory,
+        days_payable=days_payable,
+        sga_pct=sga_pct,
+        rd_pct=rd_pct,
+        sbc_pct=sbc_pct,
     )
 
     # ── Sensitivity matrix ──
@@ -318,6 +355,10 @@ def build_dcf(assumptions: dict) -> ToolResult:
 
     result["scenario_weighted_value"] = scenario_weighted_value
 
+    # ── Sell-side anchor passthrough ──
+    if assumptions.get("sell_side_anchor"):
+        result["sell_side_anchor"] = assumptions["sell_side_anchor"]
+
     # ── Soft warnings ──
     warnings = []
     if assumptions.get("da_pct_of_revenue") is None:
@@ -368,6 +409,13 @@ def _compute_dcf(
     net_cash: float,
     shares_outstanding: float,
     current_price: float,
+    # Optional three-statement detail (None = use simplified mode)
+    days_receivable: list[float] | None = None,
+    days_inventory: list[float] | None = None,
+    days_payable: list[float] | None = None,
+    sga_pct: list[float] | None = None,
+    rd_pct: list[float] | None = None,
+    sbc_pct: list[float] | None = None,
 ) -> dict:
     """Core DCF computation — returns dict with all outputs.
 
@@ -378,6 +426,7 @@ def _compute_dcf(
     nopat_list = []
     ebit_list = []
     prev_revenue = sum(float(seg["current_annual_revenue"]) for seg in segments)
+    prev_nwc_val = 0.0  # for BS detail NWC tracking
 
     for t in range(projection_years):
         # Revenue = sum of all segments' projected revenue for year t
@@ -404,17 +453,54 @@ def _compute_dcf(
         discount_factor = (1.0 + wacc) ** (t + 1)
         discounted_fcf = fcf / discount_factor
 
-        year_by_year.append({
+        row = {
             "year": t + 1,
             "revenue": round(total_revenue, 2),
             "revenue_growth": round(revenue_growth, 4),
+            "cogs": round(cogs, 2),
             "gross_profit": round(gross_profit, 2),
+            "total_opex": round(opex, 2),
             "ebit": round(ebit, 2),
             "nopat": round(nopat, 2),
             "da": round(da, 2),
+            "capex": round(capex, 2),
             "fcf": round(fcf, 2),
             "discounted_fcf": round(discounted_fcf, 2),
-        })
+        }
+
+        # SGA / R&D detail (only if LLM explicitly provided them)
+        if sga_pct is not None:
+            row["sga"] = round(total_revenue * sga_pct[t], 2)
+        if rd_pct is not None:
+            row["rd"] = round(total_revenue * rd_pct[t], 2)
+        if sbc_pct is not None:
+            row["sbc"] = round(total_revenue * sbc_pct[t], 2)
+
+        # BS detail: NWC breakdown if days_receivable provided
+        if days_receivable is not None:
+            ar = total_revenue * days_receivable[t] / 365
+            inv = cogs * (days_inventory[t] if days_inventory else 0) / 365
+            ap = cogs * (days_payable[t] if days_payable else 0) / 365
+            nwc = ar + inv - ap
+            delta_wc_detail = nwc - prev_nwc_val
+            prev_nwc_val = nwc
+            row.update({
+                "accounts_receivable": round(ar, 2),
+                "inventory": round(inv, 2),
+                "accounts_payable": round(ap, 2),
+                "nwc": round(nwc, 2),
+                "delta_wc": round(delta_wc_detail, 2),
+            })
+            # Override FCF with detailed WC
+            fcf = nopat + da - capex - delta_wc_detail
+            row["fcf"] = round(fcf, 2)
+            row["discounted_fcf"] = round(fcf / discount_factor, 2)
+        else:
+            # Simplified: still output nwc and delta_wc for consistency
+            row["nwc"] = round(total_revenue * wc_change_pct[t], 2)
+            row["delta_wc"] = round(delta_wc, 2)
+
+        year_by_year.append(row)
 
         fcf_list.append(fcf)
         nopat_list.append(nopat)

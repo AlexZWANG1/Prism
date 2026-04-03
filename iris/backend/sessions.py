@@ -87,6 +87,15 @@ class AnalysisSession:
         """Update last_activity timestamp."""
         self.last_activity = datetime.now(timezone.utc)
 
+    def inject_turn(self, user_message: str) -> None:
+        """Insert a turn marker + user message into _raw_text.
+
+        This ensures that when the session is persisted to DB and later
+        replayed, the frontend can reconstruct the multi-turn conversation
+        (AI / user / AI alternation) using the ``<!---TURN--->`` sentinel.
+        """
+        self._raw_text += f"\n\n<!---TURN--->\n{user_message}\n<!---TURN--->\n\n"
+
     # ── Accumulator ───────────────────────────────────────────
 
     def accumulate_raw(self, event: HarnessEvent) -> None:

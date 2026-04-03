@@ -30,8 +30,8 @@ export function YearByYearTable({ data }: YearByYearTableProps) {
             </tr>
           </thead>
           <tbody>
-            {data.map((row) => (
-              <tr key={row.year} className="border-b border-[var(--b1)] last:border-b-0">
+            {data.map((row, i) => (
+              <tr key={`${row.year}-${i}`} className="border-b border-[var(--b1)] last:border-b-0">
                 <td className="px-5 py-3 text-[14px] font-medium text-[var(--t1)]">{row.year}</td>
                 <td className="px-5 py-3 font-mono text-[13px] text-[var(--t2)]">{formatNumber(row.revenue)}</td>
                 <td

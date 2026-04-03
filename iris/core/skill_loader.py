@@ -57,16 +57,16 @@ def load_skills(
 
         skill_name = skill_dir.name
 
-        # Load SKILL.md — Langfuse first, local file fallback
-        lf_prompt = get_langfuse_prompt(f"iris-skill-{skill_name}")
-        if lf_prompt:
-            log.debug("Skill '%s' SKILL.md loaded from Langfuse", skill_name)
-            soul_parts.append(lf_prompt)
+        # Load SKILL.md — local file first, Langfuse fallback
+        skill_md = skill_dir / "SKILL.md"
+        if skill_md.exists():
+            log.debug("Skill '%s' SKILL.md loaded from local file", skill_name)
+            soul_parts.append(skill_md.read_text(encoding="utf-8"))
         else:
-            skill_md = skill_dir / "SKILL.md"
-            if skill_md.exists():
-                log.debug("Skill '%s' SKILL.md loaded from local file", skill_name)
-                soul_parts.append(skill_md.read_text(encoding="utf-8"))
+            lf_prompt = get_langfuse_prompt(f"iris-skill-{skill_name}")
+            if lf_prompt:
+                log.debug("Skill '%s' SKILL.md loaded from Langfuse", skill_name)
+                soul_parts.append(lf_prompt)
 
         # Load config.yaml
         config_yaml = skill_dir / "config.yaml"
